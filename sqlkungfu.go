@@ -9,69 +9,342 @@ import (
 
 // http://godoc.org/github.com/jmoiron/sqlx
 
+const (
+	mapKey  = "sqlmapkey"
+	mapKey2 = "sqlmapkey2"
+)
+
 // map
 // normal
 // join
+// To-Do:
+// - do not override non-nil values
 func Unmarshal(rows *sql.Rows, v interface{}) (err error) {
 	vv := reflect.ValueOf(v)
-	vk := vv.Kind()
-	if vk != reflect.Ptr {
+	if vv.Kind() != reflect.Ptr {
 		return fmt.Errorf("sqlkungfu: Unmarshal(non-pointer %T)", v)
 	}
 
 	vv = indirect(vv)
-	vk = vv.Kind()
 	columns, err := rows.Columns()
 	if err != nil {
 		return
 	}
-	switch vk {
+	if vv.Kind() == reflect.Map && vv.IsNil() {
+		vv.Set(reflect.MakeMap(vv.Type()))
+	}
+	switch vv.Kind() {
 	case reflect.Struct:
 		rows.Next()
 		if err = unmarshalStruct(rows, columns, vv); err != nil {
 			return
 		}
-		rows.Close()
+		if err = rows.Close(); err != nil {
+			return
+		}
 	case reflect.Slice:
+		// TODO:
+		// - []string
+		// - [][]string
+		// - []struct{}
+		// - []map[string]struct{}
+		// - []map[string]string{}
+		// - []map[string][]string{}
+		vet := vv.Type().Elem()
 		for rows.Next() {
-			elem := newValue(vv.Type().Elem())
-			if err = unmarshalStruct(rows, columns, indirect(elem)); err != nil {
-				return
+			e := newValue(vet)
+			ee := indirect(e)
+			switch ee.Kind() {
+			case reflect.Struct:
+				if err = unmarshalStruct(rows, columns, ee); err != nil {
+					return
+				}
+				vv = reflect.Append(vv, e.Elem())
+			case reflect.Map:
+				keyt := vet.Key()
+				valt := vet.Elem()
+				fields, key, val := genMapFields(columns, keyt, valt)
+				if err = rows.Scan(fields...); err != nil {
+					return
+				}
+
+				ee.Set(reflect.MakeMap(ee.Type()))
+				switch indirectT(valt).Kind() {
+				case reflect.Slice:
+					v := reflect.Append(indirect(newValue(valt)), val.([]reflect.Value)...)
+					ee.SetMapIndex(key.Elem(), v)
+				case reflect.Array:
+					// TODO: add tests
+					v := newValue(valt).Elem()
+					ve := indirect(v)
+					for i, e := range val.([]reflect.Value) {
+						ve.Index(i).Set(e)
+					}
+					vv.SetMapIndex(key.Elem(), v)
+				case reflect.Map:
+					// TODO
+				default:
+					ee.SetMapIndex(key.Elem(), val.(reflect.Value).Elem())
+				}
+				vv = reflect.Append(vv, e.Elem())
+			case reflect.Slice:
+				var eis []reflect.Value
+				var slice []interface{}
+				l := len(columns)
+				eet := ee.Type()
+				for i := 0; i < l; i++ {
+					ei := newValue(eet.Elem()).Elem()
+					eis = append(eis, ei)
+					slice = append(slice, ei.Addr().Interface())
+				}
+				if err = rows.Scan(slice...); err != nil {
+					return
+				}
+				ee.Set(reflect.Append(ee, eis...))
+				vv = reflect.Append(vv, e.Elem())
+			case reflect.Array:
+			default:
+				if err = rows.Scan(e.Interface()); err != nil {
+					return
+				}
+				vv = reflect.Append(vv, e.Elem())
 			}
-			vv = reflect.Append(vv, elem.Elem())
 		}
 		reflect.ValueOf(v).Elem().Set(vv)
 	case reflect.Array:
-		//
-	}
+		// TODO:
+		// - []string
+		// - [][]string
+		// - []struct{}
+		// - []map[string]string{}
+		var i int
+		vet := vv.Type().Elem()
+		for rows.Next() {
+			switch vet.Kind() {
+			case reflect.Struct, reflect.Ptr:
+				elem := newValue(vet)
+				if err = unmarshalStruct(rows, columns, indirect(elem)); err != nil {
+					return
+				}
+				vv.Index(i).Set(elem.Elem())
+				i++
+			case reflect.Map:
+				// TODO
+			case reflect.Slice:
+			case reflect.Array:
+			// case reflect.Ptr:
 
-	// var record reflect.Value
+			default:
+			}
+		}
+	case reflect.Map:
+		// TODO:
+		// - map[string]string
+		// - map[*string]string
+		// - map[string][]string
+		// - map[string][][]string
+		// - map[string]struct{}
+		// - map[string]map[string]string{}
+		// - map[string][]struct{}
+		// - map[string][]map[string]string{}
+		// - map[struct]struct{}
+		vvt := vv.Type()
+		keyt := vvt.Key()
+		valt := vvt.Elem()
+		for rows.Next() {
+			fields, key, val := genMapFields(columns, keyt, valt)
+
+			if err = rows.Scan(fields...); err != nil {
+				return
+			}
+
+			switch valet := indirectT(valt); valet.Kind() {
+			case reflect.Slice:
+				var v reflect.Value
+				switch indirectT(valet.Elem()).Kind() {
+				case reflect.Struct:
+					vvv := vv.MapIndex(key.Elem())
+					if !vvv.IsValid() {
+						vvv = newValue(valt).Elem()
+					}
+					v = reflect.Append(vvv, val.(reflect.Value).Elem())
+				case reflect.Slice:
+					// TODO
+				case reflect.Array:
+					// TODO
+				case reflect.Map:
+					// TODO
+				default:
+					v = reflect.Append(newValue(valt).Elem(), val.([]reflect.Value)...)
+				}
+				vv.SetMapIndex(key.Elem(), v)
+			case reflect.Array:
+				v := newValue(valt).Elem()
+				for i, e := range val.([]reflect.Value) {
+					v.Index(i).Set(e)
+				}
+				vv.SetMapIndex(key.Elem(), v)
+			case reflect.Map:
+				// v := val.(reflect.Value).Elem()
+				vals := val.([]reflect.Value)
+				v := newValue(valt).Elem()
+				for i, col := range columns {
+					if col == mapKey {
+						continue
+					}
+					v.SetMapIndex(reflect.ValueOf(col), vals[i])
+				}
+				vv.SetMapIndex(key.Elem(), v)
+			default:
+				vv.SetMapIndex(key.Elem(), val.(reflect.Value).Elem())
+			}
+		}
+		reflect.ValueOf(v).Elem().Set(vv)
+	default:
+	}
 
 	err = rows.Err()
 	return
 }
 
 func unmarshalStruct(rows *sql.Rows, columns []string, v reflect.Value) (err error) {
-	var fields []interface{}
-	// TODO: imporve?
-	for _, col := range columns {
-		fields = append(fields, getField(v, col).Addr().Interface())
-	}
-
-	if err = rows.Scan(fields...); err != nil {
+	if err = rows.Scan(getFields(v, columns)...); err != nil {
 		return
 	}
 
 	return
 }
 
+func getFields(v reflect.Value, columns []string) (fields []interface{}) {
+	// TODO: imporve?
+	for _, col := range columns {
+		fields = append(fields, getField(v, col).Addr().Interface())
+	}
+	return
+}
+
+// support multiple name casting: snake, lowercases
+func getField(v reflect.Value, name string) (f reflect.Value) {
+	// TODO: indirect(v) here is overkill?
+	f = indirect(v).FieldByNameFunc(func(field string) bool {
+		return strings.ToLower(field) == name
+	})
+	if f.Kind() != reflect.Invalid {
+		return
+	}
+
+	// handle nested fields: level1.level2.field
+	return
+}
+
 func indirect(v reflect.Value) reflect.Value {
+	if v.Kind() != reflect.Ptr {
+		return v
+	}
+
+	for {
+		v = v.Elem()
+		if v.Kind() != reflect.Ptr {
+			break
+		}
+
+		if v.IsNil() {
+			v.Set(reflect.New(v.Type().Elem()))
+		}
+	}
+
+	return v
+}
+
+func indirectT(v reflect.Type) reflect.Type {
 	for v.Kind() == reflect.Ptr {
 		v = v.Elem()
 	}
 
 	return v
 }
+
+// TODO: refactor better naming?
+func genMapFields(columns []string, keyt, valt reflect.Type) (fields []interface{}, key reflect.Value, val interface{}) {
+	key = newValue(keyt)
+	valet := indirectT(valt)
+	if k := valet.Kind(); k == reflect.Array || k == reflect.Slice {
+		switch nvalet := indirectT(valet.Elem()); nvalet.Kind() {
+		case reflect.Struct, reflect.Slice, reflect.Array, reflect.Map:
+			valt = valet.Elem()
+			valet = nvalet
+		}
+	}
+
+	for i, col := range columns {
+		if col == mapKey {
+			fields = append(fields, indirect(key).Addr().Interface())
+			continue
+		}
+
+		switch valet.Kind() {
+		case reflect.Struct:
+			if val == nil {
+				val = newValue(valt)
+			}
+			fields = append(fields, getField(val.(reflect.Value), col).Addr().Interface())
+		case reflect.Slice:
+			if val == nil {
+				// TODO: why can't we use a reflect.Slice
+				val = []reflect.Value{}
+			}
+			e := newValue(valt.Elem()).Elem()
+			ee := e
+			if e.Kind() == reflect.Ptr {
+				ee = indirect(e)
+			}
+			val = append(val.([]reflect.Value), e)
+			fields = append(fields, ee.Addr().Interface())
+		case reflect.Array:
+			if val == nil {
+				val = []reflect.Value{}
+			}
+			e := newValue(valt.Elem()).Elem()
+			ee := e
+			if e.Kind() == reflect.Ptr {
+				ee = indirect(e)
+			}
+			val = append(val.([]reflect.Value), e)
+			fields = append(fields, ee.Addr().Interface())
+		case reflect.Map:
+			if val == nil {
+				val = make([]reflect.Value, len(columns))
+			}
+			e := newValue(valt.Elem()).Elem()
+			ee := e
+			if e.Kind() == reflect.Ptr {
+				ee = indirect(e)
+			}
+			// indirect(val.(reflect.Value)).SetMapIndex(reflect.ValueOf(col), e)
+			// val = append(val.([]reflect.Value), e)
+			val.([]reflect.Value)[i] = e
+			fields = append(fields, ee.Addr().Interface())
+		default:
+			v := newValue(valt)
+			ve := v
+			if v.Kind() == reflect.Ptr {
+				ve = indirect(v)
+			}
+			fields = append(fields, ve.Addr().Interface())
+			val = v
+		}
+	}
+
+	return
+}
+
+// // TODO: should not override exist value
+// func initValue(v reflect.Value) reflect.Value {
+// 	// for i, item := range itmes {
+
+// 	// }
+// 	return v
+// }
 
 // 1
 // 	t **
@@ -92,6 +365,10 @@ func newValue(t reflect.Type) (v reflect.Value) {
 		e := reflect.New(t)
 		v.Set(e)
 	}
+
+	if e := v.Elem(); e.Kind() == reflect.Map && e.IsNil() {
+		v.Elem().Set(reflect.MakeMap(v.Elem().Type()))
+	}
 	return ov
 }
 
@@ -102,13 +379,6 @@ func newValue(t reflect.Type) (v reflect.Value) {
 // 	}
 // 	return
 // }
-
-// support multiple name casting: snake, lowercases
-func getField(v reflect.Value, name string) reflect.Value {
-	return reflect.Indirect(v).FieldByNameFunc(func(field string) bool {
-		return strings.ToLower(field) == name
-	})
-}
 
 func UnmarshalRow(row *sql.Row, v interface{}) error {
 	return nil
