@@ -173,7 +173,6 @@ func Unmarshal(rows *sql.Rows, v interface{}) (err error) {
 						v = reflect.Append(v, val.(reflect.Value).Elem())
 					}
 				case reflect.Slice:
-					// TODO: test
 					vale := newValue(valet.Elem()).Elem()
 					if vale.Kind() == reflect.Ptr {
 						valee := indirect(vale)
