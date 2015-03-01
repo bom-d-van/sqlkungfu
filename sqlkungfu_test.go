@@ -425,30 +425,59 @@ func TestUnmarshalMap(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	rows, err := db.Query("select lastname as sqlmapkey, firstname from persons")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	ps := map[string]string{}
-	err = Unmarshal(rows, &ps)
-	if err != nil {
-		t.Error(err)
-	}
-
-	if got, ok := ps["master0"]; ok {
-		if got != "kungfu0" {
-			t.Errorf(`ps["master0"] %q; want "kungfu0"`, got)
+	{
+		rows, err := db.Query("select lastname as sqlmapkey, firstname from persons")
+		if err != nil {
+			t.Fatal(err)
 		}
-	} else {
-		t.Error(`ps["master0"] does not exist`)
-	}
-	if got, ok := ps["master1"]; ok {
-		if got != "kungfu1" {
-			t.Errorf(`ps["master1"] %q; want "kungfu1"`, got)
+
+		ps := map[string]string{}
+		err = Unmarshal(rows, &ps)
+		if err != nil {
+			t.Error(err)
 		}
-	} else {
-		t.Error(`ps["master1"] does not exist`)
+
+		if got, ok := ps["master0"]; ok {
+			if got != "kungfu0" {
+				t.Errorf(`ps["master0"] %q; want "kungfu0"`, got)
+			}
+		} else {
+			t.Error(`ps["master0"] does not exist`)
+		}
+		if got, ok := ps["master1"]; ok {
+			if got != "kungfu1" {
+				t.Errorf(`ps["master1"] %q; want "kungfu1"`, got)
+			}
+		} else {
+			t.Error(`ps["master1"] does not exist`)
+		}
+	}
+	{
+		rows, err := db.Query("select lastname as sqlmapkey, firstname from persons")
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		ps := map[string]*string{}
+		err = Unmarshal(rows, &ps)
+		if err != nil {
+			t.Error(err)
+		}
+
+		if got, ok := ps["master0"]; ok {
+			if *got != "kungfu0" {
+				t.Errorf(`ps["master0"] %q; want "kungfu0"`, got)
+			}
+		} else {
+			t.Error(`ps["master0"] does not exist`)
+		}
+		if got, ok := ps["master1"]; ok {
+			if *got != "kungfu1" {
+				t.Errorf(`ps["master1"] %q; want "kungfu1"`, got)
+			}
+		} else {
+			t.Error(`ps["master1"] does not exist`)
+		}
 	}
 }
 
@@ -470,30 +499,59 @@ func TestUnmarshalMapSlice(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	rows, err := db.Query("select lastname as sqlmapkey, firstname, sex from persons")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	ps := map[string][]string{}
-	err = Unmarshal(rows, &ps)
-	if err != nil {
-		t.Error(err)
-	}
-
-	if got, ok := ps["master0"]; ok {
-		if g := strings.Join(got, " "); g != "kungfu0 male" {
-			t.Errorf(`ps["master0"] %q; want "kungfu0 male"`, g)
+	{
+		rows, err := db.Query("select lastname as sqlmapkey, firstname, sex from persons")
+		if err != nil {
+			t.Fatal(err)
 		}
-	} else {
-		t.Error(`ps["master0"] does not exist`)
-	}
-	if got, ok := ps["master1"]; ok {
-		if g := strings.Join(got, " "); g != "kungfu1 female" {
-			t.Errorf(`ps["master1"] %q; want "kungfu1 female"`, g)
+
+		ps := map[string][]string{}
+		err = Unmarshal(rows, &ps)
+		if err != nil {
+			t.Error(err)
 		}
-	} else {
-		t.Error(`ps["master1"] does not exist`)
+
+		if got, ok := ps["master0"]; ok {
+			if g := strings.Join(got, " "); g != "kungfu0 male" {
+				t.Errorf(`ps["master0"] %q; want "kungfu0 male"`, g)
+			}
+		} else {
+			t.Error(`ps["master0"] does not exist`)
+		}
+		if got, ok := ps["master1"]; ok {
+			if g := strings.Join(got, " "); g != "kungfu1 female" {
+				t.Errorf(`ps["master1"] %q; want "kungfu1 female"`, g)
+			}
+		} else {
+			t.Error(`ps["master1"] does not exist`)
+		}
+	}
+	{
+		rows, err := db.Query("select lastname as sqlmapkey, firstname, sex from persons")
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		ps := map[string]*[]string{}
+		err = Unmarshal(rows, &ps)
+		if err != nil {
+			t.Error(err)
+		}
+
+		if got, ok := ps["master0"]; ok {
+			if g := strings.Join(*got, " "); g != "kungfu0 male" {
+				t.Errorf(`ps["master0"] %q; want "kungfu0 male"`, g)
+			}
+		} else {
+			t.Error(`ps["master0"] does not exist`)
+		}
+		if got, ok := ps["master1"]; ok {
+			if g := strings.Join(*got, " "); g != "kungfu1 female" {
+				t.Errorf(`ps["master1"] %q; want "kungfu1 female"`, g)
+			}
+		} else {
+			t.Error(`ps["master1"] does not exist`)
+		}
 	}
 }
 
@@ -515,33 +573,65 @@ func TestUnmarshalMapStruct(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	rows, err := db.Query("select lastname as sqlmapkey, firstname, sex from persons")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	ps := map[string]struct {
-		FirstName string
-		Sex       string
-	}{}
-	err = Unmarshal(rows, &ps)
-	if err != nil {
-		t.Error(err)
-	}
-
-	if got, ok := ps["master0"]; ok {
-		if g := got.FirstName + " " + got.Sex; g != "kungfu0 male" {
-			t.Errorf(`ps["master0"] %q; want "kungfu0 male"`, g)
+	{
+		rows, err := db.Query("select lastname as sqlmapkey, firstname, sex from persons")
+		if err != nil {
+			t.Fatal(err)
 		}
-	} else {
-		t.Error(`ps["master0"] does not exist`)
-	}
-	if got, ok := ps["master1"]; ok {
-		if g := got.FirstName + " " + got.Sex; g != "kungfu1 female" {
-			t.Errorf(`ps["master1"] %q; want "kungfu1 female"`, g)
+
+		ps := map[string]struct {
+			FirstName string
+			Sex       string
+		}{}
+		err = Unmarshal(rows, &ps)
+		if err != nil {
+			t.Error(err)
 		}
-	} else {
-		t.Error(`ps["master1"] does not exist`)
+
+		if got, ok := ps["master0"]; ok {
+			if g := got.FirstName + " " + got.Sex; g != "kungfu0 male" {
+				t.Errorf(`ps["master0"] %q; want "kungfu0 male"`, g)
+			}
+		} else {
+			t.Error(`ps["master0"] does not exist`)
+		}
+		if got, ok := ps["master1"]; ok {
+			if g := got.FirstName + " " + got.Sex; g != "kungfu1 female" {
+				t.Errorf(`ps["master1"] %q; want "kungfu1 female"`, g)
+			}
+		} else {
+			t.Error(`ps["master1"] does not exist`)
+		}
+	}
+	{
+		rows, err := db.Query("select lastname as sqlmapkey, firstname, sex from persons")
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		ps := map[string]*struct {
+			FirstName string
+			Sex       string
+		}{}
+		err = Unmarshal(rows, &ps)
+		if err != nil {
+			t.Error(err)
+		}
+
+		if got, ok := ps["master0"]; ok {
+			if g := got.FirstName + " " + got.Sex; g != "kungfu0 male" {
+				t.Errorf(`ps["master0"] %q; want "kungfu0 male"`, g)
+			}
+		} else {
+			t.Error(`ps["master0"] does not exist`)
+		}
+		if got, ok := ps["master1"]; ok {
+			if g := got.FirstName + " " + got.Sex; g != "kungfu1 female" {
+				t.Errorf(`ps["master1"] %q; want "kungfu1 female"`, g)
+			}
+		} else {
+			t.Error(`ps["master1"] does not exist`)
+		}
 	}
 }
 
@@ -564,30 +654,59 @@ func TestUnmarshalMapMap(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	rows, err := db.Query("select lastname as sqlmapkey, firstname, sex from persons")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	var ps map[string]map[string]string
-	err = Unmarshal(rows, &ps)
-	if err != nil {
-		t.Error(err)
-	}
-
-	if got, ok := ps["master0"]; ok {
-		if g := got["firstname"] + " " + got["sex"]; g != "kungfu0 male" {
-			t.Errorf(`ps["master0"] %q; want "kungfu0 male"`, g)
+	{
+		rows, err := db.Query("select lastname as sqlmapkey, firstname, sex from persons")
+		if err != nil {
+			t.Fatal(err)
 		}
-	} else {
-		t.Error(`ps["master0"] does not exist`)
-	}
-	if got, ok := ps["master1"]; ok {
-		if g := got["firstname"] + " " + got["sex"]; g != "kungfu1 female" {
-			t.Errorf(`ps["master1"] %q; want "kungfu1 female"`, g)
+
+		var ps map[string]map[string]string
+		err = Unmarshal(rows, &ps)
+		if err != nil {
+			t.Error(err)
 		}
-	} else {
-		t.Error(`ps["master1"] does not exist`)
+
+		if got, ok := ps["master0"]; ok {
+			if g := got["firstname"] + " " + got["sex"]; g != "kungfu0 male" {
+				t.Errorf(`ps["master0"] %q; want "kungfu0 male"`, g)
+			}
+		} else {
+			t.Error(`ps["master0"] does not exist`)
+		}
+		if got, ok := ps["master1"]; ok {
+			if g := got["firstname"] + " " + got["sex"]; g != "kungfu1 female" {
+				t.Errorf(`ps["master1"] %q; want "kungfu1 female"`, g)
+			}
+		} else {
+			t.Error(`ps["master1"] does not exist`)
+		}
+	}
+	{
+		rows, err := db.Query("select lastname as sqlmapkey, firstname, sex from persons")
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		var ps map[string]*map[string]string
+		err = Unmarshal(rows, &ps)
+		if err != nil {
+			t.Error(err)
+		}
+
+		if got, ok := ps["master0"]; ok {
+			if g := (*got)["firstname"] + " " + (*got)["sex"]; g != "kungfu0 male" {
+				t.Errorf(`ps["master0"] %q; want "kungfu0 male"`, g)
+			}
+		} else {
+			t.Error(`ps["master0"] does not exist`)
+		}
+		if got, ok := ps["master1"]; ok {
+			if g := (*got)["firstname"] + " " + (*got)["sex"]; g != "kungfu1 female" {
+				t.Errorf(`ps["master1"] %q; want "kungfu1 female"`, g)
+			}
+		} else {
+			t.Error(`ps["master1"] does not exist`)
+		}
 	}
 }
 
@@ -715,42 +834,83 @@ func TestUnmarshalMapSliceMap(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	rows, err := db.Query("select lastname as sqlmapkey, firstname, sex from persons")
-	if err != nil {
-		t.Fatal(err)
-	}
+	{
+		rows, err := db.Query("select lastname as sqlmapkey, firstname, sex from persons")
+		if err != nil {
+			t.Fatal(err)
+		}
 
-	ps := map[string][]map[string]string{}
-	err = Unmarshal(rows, &ps)
-	if err != nil {
-		t.Error(err)
-	}
+		ps := map[string][]map[string]string{}
+		err = Unmarshal(rows, &ps)
+		if err != nil {
+			t.Error(err)
+		}
 
-	if got, ok := ps["master0"]; ok {
-		if len(got) != 2 {
-			t.Errorf(`len(ps["master0"]) = %d; want 2`, len(got))
-		}
-		for i, p := range got {
-			want := fmt.Sprintf("kungfu0-%d male", i)
-			if gotstr := p["firstname"] + " " + p["sex"]; gotstr != want {
-				t.Errorf(`ps["master0"][%d] = %q; want %q`, i, gotstr, want)
+		if got, ok := ps["master0"]; ok {
+			if len(got) != 2 {
+				t.Errorf(`len(ps["master0"]) = %d; want 2`, len(got))
 			}
+			for i, p := range got {
+				want := fmt.Sprintf("kungfu0-%d male", i)
+				if gotstr := p["firstname"] + " " + p["sex"]; gotstr != want {
+					t.Errorf(`ps["master0"][%d] = %q; want %q`, i, gotstr, want)
+				}
+			}
+		} else {
+			t.Error(`ps["master0"] does not exist`)
 		}
-	} else {
-		t.Error(`ps["master0"] does not exist`)
+		if got, ok := ps["master1"]; ok {
+			if len(got) != 1 {
+				t.Errorf(`len(ps["master1"]) = %d; want 1`, len(got))
+			}
+			for i, p := range got {
+				want := "kungfu1 female"
+				if gotstr := p["firstname"] + " " + p["sex"]; gotstr != want {
+					t.Errorf(`ps["master1"][%d] = %q; want %q`, i, gotstr, want)
+				}
+			}
+		} else {
+			t.Error(`ps["master1"] does not exist`)
+		}
 	}
-	if got, ok := ps["master1"]; ok {
-		if len(got) != 1 {
-			t.Errorf(`len(ps["master1"]) = %d; want 1`, len(got))
+	{
+		rows, err := db.Query("select lastname as sqlmapkey, firstname, sex from persons")
+		if err != nil {
+			t.Fatal(err)
 		}
-		for i, p := range got {
-			want := "kungfu1 female"
-			if gotstr := p["firstname"] + " " + p["sex"]; gotstr != want {
-				t.Errorf(`ps["master1"][%d] = %q; want %q`, i, gotstr, want)
+
+		ps := map[string][]*map[string]string{}
+		err = Unmarshal(rows, &ps)
+		if err != nil {
+			t.Error(err)
+		}
+
+		if got, ok := ps["master0"]; ok {
+			if len(got) != 2 {
+				t.Errorf(`len(ps["master0"]) = %d; want 2`, len(got))
 			}
+			for i, p := range got {
+				want := fmt.Sprintf("kungfu0-%d male", i)
+				if gotstr := (*p)["firstname"] + " " + (*p)["sex"]; gotstr != want {
+					t.Errorf(`ps["master0"][%d] = %q; want %q`, i, gotstr, want)
+				}
+			}
+		} else {
+			t.Error(`ps["master0"] does not exist`)
 		}
-	} else {
-		t.Error(`ps["master1"] does not exist`)
+		if got, ok := ps["master1"]; ok {
+			if len(got) != 1 {
+				t.Errorf(`len(ps["master1"]) = %d; want 1`, len(got))
+			}
+			for i, p := range got {
+				want := "kungfu1 female"
+				if gotstr := (*p)["firstname"] + " " + (*p)["sex"]; gotstr != want {
+					t.Errorf(`ps["master1"][%d] = %q; want %q`, i, gotstr, want)
+				}
+			}
+		} else {
+			t.Error(`ps["master1"] does not exist`)
+		}
 	}
 }
 
@@ -772,30 +932,59 @@ func TestUnmarshalMapArray(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	rows, err := db.Query("select lastname as sqlmapkey, firstname, sex from persons")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	ps := map[string][2]string{}
-	err = Unmarshal(rows, &ps)
-	if err != nil {
-		t.Error(err)
-	}
-
-	if got, ok := ps["master0"]; ok {
-		if g := strings.Join(got[:], " "); g != "kungfu0 male" {
-			t.Errorf(`ps["master0"] %q; want "kungfu0 male"`, g)
+	{
+		rows, err := db.Query("select lastname as sqlmapkey, firstname, sex from persons")
+		if err != nil {
+			t.Fatal(err)
 		}
-	} else {
-		t.Error(`ps["master0"] does not exist`)
-	}
-	if got, ok := ps["master1"]; ok {
-		if g := strings.Join(got[:], " "); g != "kungfu1 female" {
-			t.Errorf(`ps["master1"] %q; want "kungfu1 female"`, g)
+
+		ps := map[string][2]string{}
+		err = Unmarshal(rows, &ps)
+		if err != nil {
+			t.Error(err)
 		}
-	} else {
-		t.Error(`ps["master1"] does not exist`)
+
+		if got, ok := ps["master0"]; ok {
+			if g := strings.Join(got[:], " "); g != "kungfu0 male" {
+				t.Errorf(`ps["master0"] %q; want "kungfu0 male"`, g)
+			}
+		} else {
+			t.Error(`ps["master0"] does not exist`)
+		}
+		if got, ok := ps["master1"]; ok {
+			if g := strings.Join(got[:], " "); g != "kungfu1 female" {
+				t.Errorf(`ps["master1"] %q; want "kungfu1 female"`, g)
+			}
+		} else {
+			t.Error(`ps["master1"] does not exist`)
+		}
+	}
+	{
+		rows, err := db.Query("select lastname as sqlmapkey, firstname, sex from persons")
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		ps := map[string]*[2]string{}
+		err = Unmarshal(rows, &ps)
+		if err != nil {
+			t.Error(err)
+		}
+
+		if got, ok := ps["master0"]; ok {
+			if g := strings.Join(got[:], " "); g != "kungfu0 male" {
+				t.Errorf(`ps["master0"] %q; want "kungfu0 male"`, g)
+			}
+		} else {
+			t.Error(`ps["master0"] does not exist`)
+		}
+		if got, ok := ps["master1"]; ok {
+			if g := strings.Join(got[:], " "); g != "kungfu1 female" {
+				t.Errorf(`ps["master1"] %q; want "kungfu1 female"`, g)
+			}
+		} else {
+			t.Error(`ps["master1"] does not exist`)
+		}
 	}
 }
 
