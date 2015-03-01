@@ -610,15 +610,117 @@ func TestUnmarshalMapSliceStruct(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	{
+		rows, err := db.Query("select lastname as sqlmapkey, firstname, sex from persons")
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		ps := map[string][]*struct {
+			FirstName string
+			Sex       string
+		}{}
+		err = Unmarshal(rows, &ps)
+		if err != nil {
+			t.Error(err)
+		}
+
+		if got, ok := ps["master0"]; ok {
+			if len(got) != 2 {
+				t.Errorf(`len(ps["master0"]) = %d; want 2`, len(got))
+			}
+			for i, p := range got {
+				want := fmt.Sprintf("kungfu0-%d male", i)
+				if gotstr := p.FirstName + " " + p.Sex; gotstr != want {
+					t.Errorf(`ps["master0"][%d] = %q; want %q`, i, gotstr, want)
+				}
+			}
+		} else {
+			t.Error(`ps["master0"] does not exist`)
+		}
+		if got, ok := ps["master1"]; ok {
+			if len(got) != 1 {
+				t.Errorf(`len(ps["master1"]) = %d; want 1`, len(got))
+			}
+			for i, p := range got {
+				want := "kungfu1 female"
+				if gotstr := p.FirstName + " " + p.Sex; gotstr != want {
+					t.Errorf(`ps["master1"][%d] = %q; want %q`, i, gotstr, want)
+				}
+			}
+		} else {
+			t.Error(`ps["master1"] does not exist`)
+		}
+	}
+	{
+		rows, err := db.Query("select lastname as sqlmapkey, firstname, sex from persons")
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		ps := map[string]*[]struct {
+			FirstName string
+			Sex       string
+		}{}
+		err = Unmarshal(rows, &ps)
+		if err != nil {
+			t.Error(err)
+		}
+
+		if got, ok := ps["master0"]; ok {
+			if len(*got) != 2 {
+				t.Errorf(`len(ps["master0"]) = %d; want 2`, len(*got))
+			}
+			for i, p := range *got {
+				want := fmt.Sprintf("kungfu0-%d male", i)
+				if gotstr := p.FirstName + " " + p.Sex; gotstr != want {
+					t.Errorf(`ps["master0"][%d] = %q; want %q`, i, gotstr, want)
+				}
+			}
+		} else {
+			t.Error(`ps["master0"] does not exist`)
+		}
+		if got, ok := ps["master1"]; ok {
+			if len(*got) != 1 {
+				t.Errorf(`len(ps["master1"]) = %d; want 1`, len(*got))
+			}
+			for i, p := range *got {
+				want := "kungfu1 female"
+				if gotstr := p.FirstName + " " + p.Sex; gotstr != want {
+					t.Errorf(`ps["master1"][%d] = %q; want %q`, i, gotstr, want)
+				}
+			}
+		} else {
+			t.Error(`ps["master1"] does not exist`)
+		}
+	}
+}
+
+func TestUnmarshalMapSliceMap(t *testing.T) {
+	_, err := db.Exec(`
+		DROP TABLE IF EXISTS persons;
+
+		CREATE TABLE persons(
+			id 			integer PRIMARY KEY,
+			lastname 	varchar(255),
+			firstname 	varchar(255),
+			sex 		varchar
+		);
+
+		INSERT INTO persons (firstname, lastname, sex) VALUES ("kungfu0-0", "master0", "male");
+		INSERT INTO persons (firstname, lastname, sex) VALUES ("kungfu0-1", "master0", "male");
+		INSERT INTO persons (firstname, lastname, sex) VALUES ("kungfu1", "master1", "female");
+	`)
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	rows, err := db.Query("select lastname as sqlmapkey, firstname, sex from persons")
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	ps := map[string][]struct {
-		FirstName string
-		Sex       string
-	}{}
+	ps := map[string][]map[string]string{}
 	err = Unmarshal(rows, &ps)
 	if err != nil {
 		t.Error(err)
@@ -630,7 +732,7 @@ func TestUnmarshalMapSliceStruct(t *testing.T) {
 		}
 		for i, p := range got {
 			want := fmt.Sprintf("kungfu0-%d male", i)
-			if gotstr := p.FirstName + " " + p.Sex; gotstr != want {
+			if gotstr := p["firstname"] + " " + p["sex"]; gotstr != want {
 				t.Errorf(`ps["master0"][%d] = %q; want %q`, i, gotstr, want)
 			}
 		}
@@ -643,7 +745,7 @@ func TestUnmarshalMapSliceStruct(t *testing.T) {
 		}
 		for i, p := range got {
 			want := "kungfu1 female"
-			if gotstr := p.FirstName + " " + p.Sex; gotstr != want {
+			if gotstr := p["firstname"] + " " + p["sex"]; gotstr != want {
 				t.Errorf(`ps["master1"][%d] = %q; want %q`, i, gotstr, want)
 			}
 		}

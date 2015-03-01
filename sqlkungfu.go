@@ -160,20 +160,37 @@ func Unmarshal(rows *sql.Rows, v interface{}) (err error) {
 
 			switch valet := indirectT(valt); valet.Kind() {
 			case reflect.Slice:
-				var v reflect.Value
+				v := vv.MapIndex(key.Elem())
+				if !v.IsValid() {
+					v = newValue(valt).Elem()
+				}
 				switch indirectT(valet.Elem()).Kind() {
 				case reflect.Struct:
-					vvv := vv.MapIndex(key.Elem())
-					if !vvv.IsValid() {
-						vvv = newValue(valt).Elem()
+					if v.Kind() == reflect.Ptr {
+						ve := indirect(v)
+						ve.Set(reflect.Append(ve, val.(reflect.Value).Elem()))
+					} else {
+						v = reflect.Append(v, val.(reflect.Value).Elem())
 					}
-					v = reflect.Append(vvv, val.(reflect.Value).Elem())
 				case reflect.Slice:
 					// TODO
 				case reflect.Array:
 					// TODO
 				case reflect.Map:
-					// TODO
+					vals := val.([]reflect.Value)
+					vale := newValue(valet.Elem()).Elem()
+					for i, col := range columns {
+						if col == mapKey {
+							continue
+						}
+						vale.SetMapIndex(reflect.ValueOf(col), vals[i])
+					}
+					if v.Kind() == reflect.Ptr {
+						ve := indirect(v)
+						ve.Set(reflect.Append(ve, vale))
+					} else {
+						v = reflect.Append(v, vale)
+					}
 				default:
 					v = reflect.Append(newValue(valt).Elem(), val.([]reflect.Value)...)
 				}
