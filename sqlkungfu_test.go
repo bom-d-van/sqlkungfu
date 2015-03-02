@@ -635,6 +635,56 @@ func TestUnmarshalMapStruct(t *testing.T) {
 	}
 }
 
+func TestUnmarshalMapKeyStruct(t *testing.T) {
+	_, err := db.Exec(`
+		DROP TABLE IF EXISTS persons;
+
+		CREATE TABLE persons(
+			id 			integer PRIMARY KEY,
+			lastname 	varchar(255),
+			dream	 	varchar(255),
+			firstname 	varchar(255),
+			sex 		varchar
+		);
+
+		INSERT INTO persons (firstname, lastname, dream, sex) VALUES ("kungfu0", "master0", "master", "male");
+		INSERT INTO persons (firstname, lastname, dream, sex) VALUES ("kungfu1", "master1", "master", "female");
+	`)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rows, err := db.Query("select lastname as 'sqlmapkey.lastname', dream as 'sqlmapkey.dream', firstname, sex from persons")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	type key struct{ LastName, Dream string }
+	ps := map[key]struct {
+		FirstName string
+		Sex       string
+	}{}
+	err = Unmarshal(rows, &ps)
+	if err != nil {
+		t.Error(err)
+	}
+
+	if got, ok := ps[key{"master0", "master"}]; ok {
+		if g := got.FirstName + " " + got.Sex; g != "kungfu0 male" {
+			t.Errorf(`ps["master0"] %q; want "kungfu0 male"`, g)
+		}
+	} else {
+		t.Error(`ps["master0"] does not exist`)
+	}
+	if got, ok := ps[key{"master1", "master"}]; ok {
+		if g := got.FirstName + " " + got.Sex; g != "kungfu1 female" {
+			t.Errorf(`ps["master1"] %q; want "kungfu1 female"`, g)
+		}
+	} else {
+		t.Error(`ps["master1"] does not exist`)
+	}
+}
+
 func TestUnmarshalMapMap(t *testing.T) {
 	_, err := db.Exec(`
 		DROP TABLE IF EXISTS persons;

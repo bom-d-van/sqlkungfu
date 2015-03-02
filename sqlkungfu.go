@@ -72,7 +72,7 @@ func Unmarshal(rows *sql.Rows, v interface{}) (err error) {
 				switch indirectT(valt).Kind() {
 				case reflect.Slice:
 					v := reflect.Append(indirect(newValue(valt)), val.([]reflect.Value)...)
-					ee.SetMapIndex(key.Elem(), v)
+					ee.SetMapIndex(key, v)
 				case reflect.Array:
 					// TODO: add tests
 					v := newValue(valt).Elem()
@@ -80,11 +80,11 @@ func Unmarshal(rows *sql.Rows, v interface{}) (err error) {
 					for i, e := range val.([]reflect.Value) {
 						ve.Index(i).Set(e)
 					}
-					vv.SetMapIndex(key.Elem(), v)
+					vv.SetMapIndex(key, v)
 				case reflect.Map:
 					// TODO
 				default:
-					ee.SetMapIndex(key.Elem(), val.(reflect.Value).Elem())
+					ee.SetMapIndex(key, val.(reflect.Value).Elem())
 				}
 				vv = reflect.Append(vv, e.Elem())
 			case reflect.Slice:
@@ -160,7 +160,7 @@ func Unmarshal(rows *sql.Rows, v interface{}) (err error) {
 
 			switch valet := indirectT(valt); valet.Kind() {
 			case reflect.Slice:
-				v := vv.MapIndex(key.Elem())
+				v := vv.MapIndex(key)
 				if !v.IsValid() {
 					v = newValue(valt).Elem()
 				}
@@ -232,8 +232,9 @@ func Unmarshal(rows *sql.Rows, v interface{}) (err error) {
 						v = reflect.Append(v, val.([]reflect.Value)...)
 					}
 				}
-				vv.SetMapIndex(key.Elem(), v)
+				vv.SetMapIndex(key, v)
 			case reflect.Array:
+				// TODO: same support as slice above
 				v := newValue(valt).Elem()
 				ve := v
 				if v.Kind() == reflect.Ptr {
@@ -242,7 +243,7 @@ func Unmarshal(rows *sql.Rows, v interface{}) (err error) {
 				for i, e := range val.([]reflect.Value) {
 					ve.Index(i).Set(e)
 				}
-				vv.SetMapIndex(key.Elem(), v)
+				vv.SetMapIndex(key, v)
 			case reflect.Map:
 				vals := val.([]reflect.Value)
 				v := newValue(valt).Elem()
@@ -256,9 +257,9 @@ func Unmarshal(rows *sql.Rows, v interface{}) (err error) {
 					}
 					ve.SetMapIndex(reflect.ValueOf(col), vals[i])
 				}
-				vv.SetMapIndex(key.Elem(), v)
+				vv.SetMapIndex(key, v)
 			default:
-				vv.SetMapIndex(key.Elem(), val.(reflect.Value).Elem())
+				vv.SetMapIndex(key, val.(reflect.Value).Elem())
 			}
 		}
 		reflect.ValueOf(v).Elem().Set(vv)
@@ -328,7 +329,7 @@ func indirectT(v reflect.Type) reflect.Type {
 
 // TODO: refactor better naming?
 func genMapFields(columns []string, keyt, valt reflect.Type) (fields []interface{}, key reflect.Value, val interface{}) {
-	key = newValue(keyt)
+	key = newValue(keyt).Elem()
 	valet := indirectT(valt)
 	if k := valet.Kind(); k == reflect.Array || k == reflect.Slice {
 		switch nvalet := indirectT(valet.Elem()); nvalet.Kind() {
@@ -339,8 +340,16 @@ func genMapFields(columns []string, keyt, valt reflect.Type) (fields []interface
 	}
 
 	for i, col := range columns {
-		if col == mapKey {
-			fields = append(fields, indirect(key).Addr().Interface())
+		if col == mapKey || strings.HasPrefix(col, mapKey+".") {
+			if key.Kind() == reflect.Ptr {
+				key = indirect(key)
+			}
+			if key.Kind() == reflect.Struct {
+				col = strings.Replace(col, mapKey+".", "", 1)
+				fields = append(fields, getField(key, col).Addr().Interface())
+			} else {
+				fields = append(fields, key.Addr().Interface())
+			}
 			continue
 		}
 
