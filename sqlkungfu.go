@@ -187,7 +187,23 @@ func Unmarshal(rows *sql.Rows, v interface{}) (err error) {
 						v = reflect.Append(v, vale)
 					}
 				case reflect.Array:
-					// TODO
+					vale := newValue(valet.Elem()).Elem()
+					if vale.Kind() == reflect.Ptr {
+						valee := indirect(vale)
+						for i, e := range val.([]reflect.Value) {
+							valee.Index(i).Set(e)
+						}
+					} else {
+						for i, e := range val.([]reflect.Value) {
+							vale.Index(i).Set(e)
+						}
+					}
+					if v.Kind() == reflect.Ptr {
+						ve := indirect(v)
+						ve.Set(reflect.Append(ve, vale))
+					} else {
+						v = reflect.Append(v, vale)
+					}
 				case reflect.Map:
 					vals := val.([]reflect.Value)
 					vale := newValue(valet.Elem()).Elem()
