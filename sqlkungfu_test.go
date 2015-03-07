@@ -10,6 +10,9 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 )
 
+// TODO:
+// - fix error: database is locked
+
 type Person struct {
 	Id        uint64
 	FirstName string
@@ -48,8 +51,6 @@ func init() {
 	}
 }
 
-// TODO:
-// - fix error: database is locked
 func TestUnmarshalStruct(t *testing.T) {
 	_, err := db.Exec(`
 		DROP TABLE IF EXISTS persons;
@@ -90,6 +91,109 @@ func TestUnmarshalStruct(t *testing.T) {
 	}
 	if p.Addr != "Shaolin Temple" {
 		t.Errorf("got %q; want %q", p.Addr, "Shaolin Temple")
+	}
+}
+
+func TestUnmarshalEmbeddedStruct(t *testing.T) {
+	_, err := db.Exec(`
+		DROP TABLE IF EXISTS persons;
+
+		CREATE TABLE persons(
+			id integer PRIMARY KEY,
+			lastname varchar(255),
+			firstname varchar(255),
+			age integer,
+			addr string
+		);
+
+		INSERT INTO persons (firstname, lastname, age, addr) VALUES ("kungfu", "master", 24, "Shaolin Temple");
+	`)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rows, err := db.Query("select lastname, firstname, age, addr from persons")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	type Name struct{ LastName, FirstName string }
+	type Num struct{ Age int }
+	type Text struct{ Addr string }
+	type Info struct {
+		Num
+		*Text
+	}
+	var p struct {
+		Name
+		*Info
+	}
+	err = Unmarshal(rows, &p)
+	if err != nil {
+		t.Error(err)
+	}
+
+	if got := p.FirstName + " " + p.LastName; got != "kungfu master" {
+		t.Errorf("got %s; want %s", got, "kungfu master")
+	}
+	if p.Age != 24 {
+		t.Errorf("got %d; want 24", p.Age)
+	}
+	if p.Addr != "Shaolin Temple" {
+		t.Errorf("got %q; want %q", p.Addr, "Shaolin Temple")
+	}
+}
+
+// TODO: struct{map[string]string}
+
+func TestUnmarshalNestedStruct(t *testing.T) {
+	_, err := db.Exec(`
+		DROP TABLE IF EXISTS persons;
+
+		CREATE TABLE persons(
+			id integer PRIMARY KEY,
+			lastname varchar(255),
+			firstname varchar(255),
+			age integer,
+			addr string
+		);
+
+		INSERT INTO persons (firstname, lastname, age, addr) VALUES ("kungfu", "master", 24, "Shaolin Temple");
+	`)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rows, err := db.Query("select lastname as 'name.last', firstname as 'name.first', age as 'info.num.age', addr as 'info.text.addr' from persons")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	type Name struct{ Last, First string }
+	var p struct {
+		Name **Name
+		Info *struct {
+			Num struct {
+				Age int
+			}
+			Text struct {
+				Addr string
+			}
+		}
+	}
+	err = Unmarshal(rows, &p)
+	if err != nil {
+		t.Error(err)
+	}
+
+	if got := (*p.Name).First + " " + (*p.Name).Last; got != "kungfu master" {
+		t.Errorf("got %s; want %s", got, "kungfu master")
+	}
+	if p.Info.Num.Age != 24 {
+		t.Errorf("got %d; want 24", p.Info.Num.Age)
+	}
+	if p.Info.Text.Addr != "Shaolin Temple" {
+		t.Errorf("got %q; want %q", p.Info.Text.Addr, "Shaolin Temple")
 	}
 }
 

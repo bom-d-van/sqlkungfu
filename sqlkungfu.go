@@ -20,6 +20,18 @@ const (
 // To-Do:
 // - do not override non-nil values
 func Unmarshal(rows *sql.Rows, v interface{}) (err error) {
+	defer func() {
+		if er := rows.Close(); er != nil {
+			if err == nil {
+				err = er
+			}
+			return
+		}
+
+		if err == nil {
+			err = rows.Err()
+		}
+	}()
 	vv := reflect.ValueOf(v)
 	if vv.Kind() != reflect.Ptr {
 		return fmt.Errorf("sqlkungfu: Unmarshal(non-pointer %T)", v)
@@ -37,9 +49,6 @@ func Unmarshal(rows *sql.Rows, v interface{}) (err error) {
 	case reflect.Struct:
 		rows.Next()
 		if err = unmarshalStruct(rows, columns, vv); err != nil {
-			return
-		}
-		if err = rows.Close(); err != nil {
 			return
 		}
 	case reflect.Slice:
@@ -266,7 +275,6 @@ func Unmarshal(rows *sql.Rows, v interface{}) (err error) {
 	default:
 	}
 
-	err = rows.Err()
 	return
 }
 
@@ -281,7 +289,11 @@ func unmarshalStruct(rows *sql.Rows, columns []string, v reflect.Value) (err err
 func getFields(v reflect.Value, columns []string) (fields []interface{}) {
 	// TODO: imporve?
 	for _, col := range columns {
-		fields = append(fields, getField(v, col).Addr().Interface())
+		field := getField(v, col)
+		if !field.IsValid() {
+			continue
+		}
+		fields = append(fields, field.Addr().Interface())
 	}
 	return
 }
@@ -289,9 +301,40 @@ func getFields(v reflect.Value, columns []string) (fields []interface{}) {
 // support multiple name casting: snake, lowercases
 func getField(v reflect.Value, name string) (f reflect.Value) {
 	// TODO: indirect(v) here is overkill?
-	f = indirect(v).FieldByNameFunc(func(field string) bool {
-		return strings.ToLower(field) == name
-	})
+	names := strings.Split(name, ".")
+	for _, name := range names {
+		v = indirect(v)
+		num := v.NumField()
+		vt := v.Type()
+		for i := 0; i < num; i++ {
+			sf := vt.FieldByIndex([]int{i})
+			if strings.ToLower(sf.Name) == name {
+				f = v.FieldByIndex([]int{i})
+				break
+			}
+		}
+
+		if f.IsValid() {
+			v = f
+			continue
+		}
+
+		for i := 0; i < num; i++ {
+			if sf := vt.FieldByIndex([]int{i}); indirectT(sf.Type).Kind() == reflect.Struct {
+				f = getField(v.FieldByIndex([]int{i}), name)
+			}
+			if f.IsValid() {
+				break
+			}
+		}
+
+		if !f.IsValid() {
+			break
+		}
+
+		v = f
+	}
+
 	if f.Kind() != reflect.Invalid {
 		return
 	}
@@ -300,9 +343,14 @@ func getField(v reflect.Value, name string) (f reflect.Value) {
 	return
 }
 
+// indirect initializes value if necessary
 func indirect(v reflect.Value) reflect.Value {
 	if v.Kind() != reflect.Ptr {
 		return v
+	}
+
+	if v.IsNil() {
+		v.Set(newValue(v.Type()).Elem())
 	}
 
 	for {
@@ -312,7 +360,7 @@ func indirect(v reflect.Value) reflect.Value {
 		}
 
 		if v.IsNil() {
-			v.Set(reflect.New(v.Type().Elem()))
+			v.Set(newValue(v.Type()).Elem())
 		}
 	}
 
