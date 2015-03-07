@@ -150,13 +150,16 @@ func Unmarshal(rows *sql.Rows, v interface{}) (err error) {
 		// TODO:
 		// - map[string]string
 		// - map[*string]string
+		//
+		// - map[struct]struct{}
+		//
 		// - map[string][]string
-		// - map[string][][]string
 		// - map[string]struct{}
 		// - map[string]map[string]string{}
+		//
+		// - map[string][][]string
 		// - map[string][]struct{}
 		// - map[string][]map[string]string{}
-		// - map[struct]struct{}
 		vvt := vv.Type()
 		keyt := vvt.Key()
 		valt := vvt.Elem()
@@ -279,29 +282,54 @@ func Unmarshal(rows *sql.Rows, v interface{}) (err error) {
 }
 
 func unmarshalStruct(rows *sql.Rows, columns []string, v reflect.Value) (err error) {
-	if err = rows.Scan(getFields(v, columns)...); err != nil {
-		return
-	}
-
-	return
-}
-
-func getFields(v reflect.Value, columns []string) (fields []interface{}) {
-	// TODO: imporve?
+	var (
+		fields   []interface{}
+		fieldMap = map[string]reflect.Value{}
+	)
 	for _, col := range columns {
 		field := getField(v, col)
 		if !field.IsValid() {
 			continue
 		}
-		fields = append(fields, field.Addr().Interface())
+		field = indirect(field)
+		var val reflect.Value
+		switch field.Kind() {
+		case reflect.Slice, reflect.Array:
+			fieldMap[col] = field
+			val = newValue(field.Type().Elem())
+		case reflect.Map:
+			// TODO?
+		default:
+			val = field.Addr()
+		}
+		fields = append(fields, val.Interface())
 	}
+
+	if err = rows.Scan(fields...); err != nil {
+		return
+	}
+
+	var arri int
+	for i, col := range columns {
+		field := fieldMap[col]
+		switch field.Kind() {
+		case reflect.Slice:
+			field.Set(reflect.Append(field, reflect.ValueOf(fields[i]).Elem()))
+		case reflect.Array:
+			field.Index(arri).Set(reflect.ValueOf(fields[i]).Elem())
+			arri++
+		case reflect.Map:
+			// TODO?
+		}
+	}
+
 	return
 }
 
 // support multiple name casting: snake, lowercases
-func getField(v reflect.Value, name string) (f reflect.Value) {
+func getField(v reflect.Value, schema string) (f reflect.Value) {
 	// TODO: indirect(v) here is overkill?
-	names := strings.Split(name, ".")
+	names := strings.Split(schema, ".")
 	for _, name := range names {
 		v = indirect(v)
 		num := v.NumField()
@@ -339,7 +367,6 @@ func getField(v reflect.Value, name string) (f reflect.Value) {
 		return
 	}
 
-	// handle nested fields: level1.level2.field
 	return
 }
 

@@ -74,23 +74,98 @@ func TestUnmarshalStruct(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// TODO: var p **Person
-	var p Person
-	pp := &p
-	ppp := &pp
-	err = Unmarshal(rows, &ppp)
+	var p **Person
+	err = Unmarshal(rows, &p)
 	if err != nil {
 		t.Error(err)
 	}
 
-	if p.String() != "kungfu master" {
-		t.Errorf("got %s; want %s", p.String(), "kungfu master")
+	if (**p).String() != "kungfu master" {
+		t.Errorf("got %s; want %s", (**p).String(), "kungfu master")
 	}
-	if p.Age != Int(24) {
-		t.Errorf("got %d; want 24", p.Age)
+	if (**p).Age != Int(24) {
+		t.Errorf("got %d; want 24", (**p).Age)
 	}
-	if p.Addr != "Shaolin Temple" {
-		t.Errorf("got %q; want %q", p.Addr, "Shaolin Temple")
+	if (**p).Addr != "Shaolin Temple" {
+		t.Errorf("got %q; want %q", (**p).Addr, "Shaolin Temple")
+	}
+}
+
+// TODO:
+// - map[string][]interface{}
+func TestUnmarshalStructWithMutiSameColumn(t *testing.T) {
+	_, err := db.Exec(`
+		DROP TABLE IF EXISTS persons;
+
+		CREATE TABLE persons(
+			id integer PRIMARY KEY,
+			lastname varchar(255),
+			firstname varchar(255),
+			age integer,
+			addr string
+		);
+
+		INSERT INTO persons (firstname, lastname, age, addr) VALUES ("kungfu", "master", 24, "Shaolin Temple");
+	`)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	{
+		rows, err := db.Query("select firstname name, lastname name from persons")
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		var p struct {
+			Name *[]*string
+		}
+		err = Unmarshal(rows, &p)
+		if err != nil {
+			t.Error(err)
+		}
+
+		if got := *(*p.Name)[0] + " " + *(*p.Name)[1]; got != "kungfu master" {
+			t.Errorf("got %s; want %s", got, "kungfu master")
+		}
+	}
+	{
+		rows, err := db.Query("select firstname name, lastname name from persons")
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		var p struct {
+			Name [2]string
+		}
+		err = Unmarshal(rows, &p)
+		if err != nil {
+			t.Error(err)
+		}
+
+		if got := p.Name[0] + " " + p.Name[1]; got != "kungfu master" {
+			t.Errorf("got %s; want %s", got, "kungfu master")
+		}
+	}
+	{
+		rows, err := db.Query("select firstname 'info.name', lastname 'info.name' from persons")
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		var p struct {
+			Info struct {
+				Name *[]*string
+			}
+		}
+		err = Unmarshal(rows, &p)
+		if err != nil {
+			t.Error(err)
+		}
+
+		if got := *(*p.Info.Name)[0] + " " + *(*p.Info.Name)[1]; got != "kungfu master" {
+			t.Errorf("got %s; want %s", got, "kungfu master")
+		}
 	}
 }
 
@@ -144,8 +219,6 @@ func TestUnmarshalEmbeddedStruct(t *testing.T) {
 	}
 }
 
-// TODO: struct{map[string]string}
-
 func TestUnmarshalNestedStruct(t *testing.T) {
 	_, err := db.Exec(`
 		DROP TABLE IF EXISTS persons;
@@ -197,6 +270,72 @@ func TestUnmarshalNestedStruct(t *testing.T) {
 	}
 }
 
+// TODO
+func TestUnmarshalNestedMap(t *testing.T) {
+	_, err := db.Exec(`
+		DROP TABLE IF EXISTS persons;
+
+		CREATE TABLE persons(
+			id integer PRIMARY KEY,
+			lastname varchar(255),
+			firstname varchar(255),
+			age integer,
+			addr string
+		);
+
+		INSERT INTO persons (firstname, lastname, age, addr) VALUES ("kungfu", "master", 24, "Shaolin Temple");
+	`)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rows, err := db.Query("select lastname as 'name.last', firstname as 'name.first' from persons")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// var name1 string
+	// var name2 **string
+	// rows.Next()
+	// fmt.Println(rows.Scan(&name1, &name2))
+	// fmt.Printf("--> %s %s\n", name1, **name2)
+	// rows.Close()
+	return
+
+	// type Name struct{ Last, First string }
+	var p struct {
+		Name map[string]string
+		// TODO:
+		// - Name **map[string]string
+
+		// Info map[struct]interface{}
+
+		// Info map[string]Struct{}
+		// Info *struct {
+		// 	Num struct {
+		// 		Age int
+		// 	}
+		// 	Text struct {
+		// 		Addr string
+		// 	}
+		// }
+	}
+	err = Unmarshal(rows, &p)
+	if err != nil {
+		t.Error(err)
+	}
+
+	// if got := (*p.Name).First + " " + (*p.Name).Last; got != "kungfu master" {
+	// 	t.Errorf("got %s; want %s", got, "kungfu master")
+	// }
+	// if p.Info.Num.Age != 24 {
+	// 	t.Errorf("got %d; want 24", p.Info.Num.Age)
+	// }
+	// if p.Info.Text.Addr != "Shaolin Temple" {
+	// 	t.Errorf("got %q; want %q", p.Info.Text.Addr, "Shaolin Temple")
+	// }
+}
+
 func TestUnmarshalEmptyPointer(t *testing.T) {
 	_, err := db.Exec(`
 		DROP TABLE IF EXISTS persons;
@@ -238,6 +377,7 @@ func TestUnmarshalEmptyPointer(t *testing.T) {
 	}
 }
 
+// TODO: []interface{}
 func TestUnmarshalSlicePlain(t *testing.T) {
 	_, err := db.Exec(`
 		DROP TABLE IF EXISTS persons;
@@ -254,26 +394,49 @@ func TestUnmarshalSlicePlain(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	rows, err := db.Query("select firstname from persons")
-	if err != nil {
-		t.Fatal(err)
-	}
+	{
+		rows, err := db.Query("select firstname from persons")
+		if err != nil {
+			t.Fatal(err)
+		}
 
-	var ps []string
-	err = Unmarshal(rows, &ps)
-	if err != nil {
-		t.Error(err)
-	}
+		var ps []string
+		err = Unmarshal(rows, &ps)
+		if err != nil {
+			t.Error(err)
+		}
 
-	if len(ps) != 1 {
-		t.Errorf("retrieve %d; want 1", len(ps))
-		return
+		if len(ps) != 1 {
+			t.Errorf("retrieve %d; want 1", len(ps))
+			return
+		}
+		if ps[0] != "kungfu" {
+			t.Errorf("got %s; want %s", ps[0], "kungfu")
+		}
 	}
-	if ps[0] != "kungfu" {
-		t.Errorf("got %s; want %s", ps[0], "kungfu")
+	{
+		rows, err := db.Query("select firstname from persons")
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		var ps []interface{}
+		err = Unmarshal(rows, &ps)
+		if err != nil {
+			t.Error(err)
+		}
+
+		if len(ps) != 1 {
+			t.Errorf("retrieve %d; want 1", len(ps))
+			return
+		}
+		if string(ps[0].([]uint8)) != "kungfu" {
+			t.Errorf("got %s; want %s", ps[0], "kungfu")
+		}
 	}
 }
 
+// TODO: [][]interface{}
 func TestUnmarshalSliceSlice(t *testing.T) {
 	_, err := db.Exec(`
 		DROP TABLE IF EXISTS persons;
@@ -313,7 +476,6 @@ func TestUnmarshalSliceSlice(t *testing.T) {
 			}
 		}
 	}
-
 	{
 		rows, err := db.Query("select firstname, lastname from persons")
 		if err != nil {
@@ -333,6 +495,28 @@ func TestUnmarshalSliceSlice(t *testing.T) {
 		for i, p := range ps {
 			if want := fmt.Sprintf("kungfu%d master%d", i, i); strings.Join(**p, " ") != want {
 				t.Errorf("got %s; want %s", strings.Join(**p, " "), want)
+			}
+		}
+	}
+	{
+		rows, err := db.Query("select id, firstname, lastname from persons")
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		var ps [][]interface{}
+		err = Unmarshal(rows, &ps)
+		if err != nil {
+			t.Error(err)
+		}
+
+		if len(ps) != 2 {
+			t.Errorf("retrieve %d; want 2", len(ps))
+			return
+		}
+		for i, p := range ps {
+			if got, want := fmt.Sprintf("%d %s %s", p...), fmt.Sprintf("%d kungfu%d master%d", i+1, i, i); got != want {
+				t.Errorf("got %s; want %s", got, want)
 			}
 		}
 	}
