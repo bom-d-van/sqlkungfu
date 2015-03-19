@@ -2,6 +2,7 @@ package sqlkungfu
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"reflect"
 	"strings"
@@ -270,8 +271,13 @@ func TestUnmarshalNestedStruct(t *testing.T) {
 	}
 }
 
-// TODO
-func TestUnmarshalNestedMap(t *testing.T) {
+// TODO:
+// - Name **map[string]string
+// - Info map[struct]interface{}
+// - Name map[String]string
+// - handle schema with extra dot separator
+// - Info map[string][]map[string]interface{}
+func TestUnmarshalSchema(t *testing.T) {
 	_, err := db.Exec(`
 		DROP TABLE IF EXISTS persons;
 
@@ -289,51 +295,216 @@ func TestUnmarshalNestedMap(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	rows, err := db.Query("select lastname as 'name.last', firstname as 'name.first' from persons")
-	if err != nil {
+	{
+		rows, err := db.Query("select lastname 'name.last', firstname 'name.first', age 'info.num.age', addr 'info.text.addr' from persons")
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		type data struct {
+			Name map[string]string
+			Info map[string]map[string]interface{}
+		}
+
+		var p data
+
+		err = Unmarshal(rows, &p)
+		if err != nil {
+			t.Error(err)
+		}
+
+		want := data{
+			Name: map[string]string{"first": "kungfu", "last": "master"},
+			Info: map[string]map[string]interface{}{
+				"num":  map[string]interface{}{"age": int64(24)},
+				"text": map[string]interface{}{"addr": "Shaolin Temple"},
+			},
+		}
+
+		if !reflect.DeepEqual(p, want) {
+			reportErr(t, p, want)
+		}
+	}
+	{
+		rows, err := db.Query("select lastname 'name.l0.last', firstname 'name.l0.first', age 'info.l0.l1.num.age' from persons")
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		type data struct {
+			Name map[string]string
+			Info map[string]map[string]int
+		}
+
+		var p data
+
+		err = Unmarshal(rows, &p)
+		if err != nil {
+			t.Error(err)
+		}
+
+		want := data{
+			Name: map[string]string{"l0.first": "kungfu", "l0.last": "master"},
+			Info: map[string]map[string]int{
+				"l0": map[string]int{
+					"l1.num.age": 24,
+				},
+			},
+		}
+
+		if !reflect.DeepEqual(p, want) {
+			reportErr(t, p, want)
+		}
+	}
+	{
+		rows, err := db.Query("select lastname 'name.last', firstname 'name.first', age 'info.num.age', addr 'info.text.addr' from persons")
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		type data struct {
+			Name map[string]string
+			Info map[string]interface{}
+		}
+		var p data
+		err = Unmarshal(rows, &p)
+		if err != nil {
+			t.Error(err)
+		}
+
+		want := data{
+			Name: map[string]string{"first": "kungfu", "last": "master"},
+			Info: map[string]interface{}{
+				"num":  map[string]interface{}{"age": int64(24)},
+				"text": map[string]interface{}{"addr": "Shaolin Temple"},
+			},
+		}
+
+		if !reflect.DeepEqual(p, want) {
+			reportErr(t, p, want)
+		}
+	}
+	{
+		rows, err := db.Query("select lastname 'name.last', firstname 'name.first', age 'info.num.age', addr 'info.text.addr' from persons")
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		type info struct {
+			Age  int    // Num
+			Addr string // Text
+		}
+		type data struct {
+			Name map[string]string
+			Info map[string]info
+		}
+		var p data
+
+		err = Unmarshal(rows, &p)
+		if err != nil {
+			t.Error(err)
+		}
+
+		want := data{
+			Name: map[string]string{"first": "kungfu", "last": "master"},
+			Info: map[string]info{
+				"num":  info{Age: 24},
+				"text": info{Addr: "Shaolin Temple"},
+			},
+		}
+
+		if !reflect.DeepEqual(p, want) {
+			reportErr(t, p, want)
+		}
+	}
+	{
+		rows, err := db.Query("select lastname 'name.last', firstname 'name.first', age 'info.l0.l1.l2.num.age', addr 'info.l0.l1.l2.text.addr' from persons")
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		type Num struct{ Age int }
+		type Text struct{ Addr string }
+		type L2 struct {
+			Num  Num
+			Text Text
+		}
+		type L1 struct{ L2 L2 }
+		type val struct{ L1 L1 }
+		type info map[string]*val
+		type data struct {
+			Name map[string]string
+			Info info
+		}
+		var p data
+
+		err = Unmarshal(rows, &p)
+		if err != nil {
+			t.Error(err)
+		}
+
+		want := data{
+			Name: map[string]string{"first": "kungfu", "last": "master"},
+			Info: info{"l0": &val{L1{L2{
+				Num:  Num{24},
+				Text: Text{"Shaolin Temple"},
+			}}}},
+		}
+
+		if !reflect.DeepEqual(p, want) {
+			reportErr(t, p, want)
+		}
+	}
+	{
+		rows, err := db.Query("select lastname 'name.last', firstname 'name.first', age 'info.num.age', addr 'info.text.addr' from persons")
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		type info struct {
+			Num  map[string]int
+			Text map[string]string
+		}
+		type data struct {
+			Name map[string]string
+			Info info
+		}
+		var p data
+
+		err = Unmarshal(rows, &p)
+		if err != nil {
+			t.Error(err)
+		}
+
+		want := data{
+			Name: map[string]string{"first": "kungfu", "last": "master"},
+			Info: info{
+				Num:  map[string]int{"age": 24},
+				Text: map[string]string{"addr": "Shaolin Temple"},
+			},
+		}
+
+		if !reflect.DeepEqual(p, want) {
+			reportErr(t, p, want)
+		}
+	}
+
+	// var p map[string]interface{}
+	// err = Unmarshal(rows, &p)
+	// if err != nil {
+	// 	t.Error(err)
+	// }
+}
+
+func reportErr(t *testing.T, got, want interface{}) {
+	var err error
+	if got, err = json.MarshalIndent(got, "", "  "); err != nil {
 		t.Fatal(err)
 	}
-
-	// var name1 string
-	// var name2 **string
-	// rows.Next()
-	// fmt.Println(rows.Scan(&name1, &name2))
-	// fmt.Printf("--> %s %s\n", name1, **name2)
-	// rows.Close()
-	return
-
-	// type Name struct{ Last, First string }
-	var p struct {
-		Name map[string]string
-		// TODO:
-		// - Name **map[string]string
-
-		// Info map[struct]interface{}
-
-		// Info map[string]Struct{}
-		// Info *struct {
-		// 	Num struct {
-		// 		Age int
-		// 	}
-		// 	Text struct {
-		// 		Addr string
-		// 	}
-		// }
+	if want, err = json.MarshalIndent(want, "", "  "); err != nil {
+		t.Fatal(err)
 	}
-	err = Unmarshal(rows, &p)
-	if err != nil {
-		t.Error(err)
-	}
-
-	// if got := (*p.Name).First + " " + (*p.Name).Last; got != "kungfu master" {
-	// 	t.Errorf("got %s; want %s", got, "kungfu master")
-	// }
-	// if p.Info.Num.Age != 24 {
-	// 	t.Errorf("got %d; want 24", p.Info.Num.Age)
-	// }
-	// if p.Info.Text.Addr != "Shaolin Temple" {
-	// 	t.Errorf("got %q; want %q", p.Info.Text.Addr, "Shaolin Temple")
-	// }
+	t.Errorf("got %s\nwant %s", got, want)
 }
 
 func TestUnmarshalEmptyPointer(t *testing.T) {
