@@ -571,6 +571,7 @@ func TestUnmarshalSlicePlain(t *testing.T) {
 			t.Fatal(err)
 		}
 
+		// TODO: var ps ****[]string
 		var ps []string
 		err = Unmarshal(rows, &ps)
 		if err != nil {
@@ -585,6 +586,7 @@ func TestUnmarshalSlicePlain(t *testing.T) {
 			t.Errorf("got %s; want %s", ps[0], "kungfu")
 		}
 	}
+	return
 	{
 		rows, err := db.Query("select firstname from persons")
 		if err != nil {
@@ -676,6 +678,91 @@ func TestUnmarshalSliceSlice(t *testing.T) {
 		}
 
 		var ps [][]interface{}
+		err = Unmarshal(rows, &ps)
+		if err != nil {
+			t.Error(err)
+		}
+
+		if len(ps) != 2 {
+			t.Errorf("retrieve %d; want 2", len(ps))
+			return
+		}
+		for i, p := range ps {
+			if got, want := fmt.Sprintf("%d %s %s", p...), fmt.Sprintf("%d kungfu%d master%d", i+1, i, i); got != want {
+				t.Errorf("got %s; want %s", got, want)
+			}
+		}
+	}
+}
+
+func TestUnmarshalArraySlice(t *testing.T) {
+	_, err := db.Exec(`
+		DROP TABLE IF EXISTS persons;
+
+		CREATE TABLE persons(
+			id integer PRIMARY KEY,
+			lastname varchar(255),
+			firstname varchar(255)
+		);
+
+		INSERT INTO persons (firstname, lastname) VALUES ("kungfu0", "master0");
+		INSERT INTO persons (firstname, lastname) VALUES ("kungfu1", "master1");
+	`)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	{
+		rows, err := db.Query("select firstname, lastname from persons")
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		var ps [2][]string
+		err = Unmarshal(rows, &ps)
+		if err != nil {
+			t.Error(err)
+		}
+
+		if len(ps) != 2 {
+			t.Errorf("retrieve %d; want 2", len(ps))
+			return
+		}
+		for i, p := range ps {
+			if want := fmt.Sprintf("kungfu%d master%d", i, i); strings.Join(p, " ") != want {
+				t.Errorf("got %s; want %s", strings.Join(p, " "), want)
+			}
+		}
+	}
+	{
+		rows, err := db.Query("select firstname, lastname from persons")
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		var ps [2]**[]string
+		err = Unmarshal(rows, &ps)
+		if err != nil {
+			t.Error(err)
+		}
+
+		if len(ps) != 2 {
+			t.Errorf("retrieve %d; want 2", len(ps))
+			return
+		}
+		for i, p := range ps {
+			if want := fmt.Sprintf("kungfu%d master%d", i, i); strings.Join(**p, " ") != want {
+				t.Errorf("got %s; want %s", strings.Join(**p, " "), want)
+			}
+		}
+	}
+	{
+		rows, err := db.Query("select id, firstname, lastname from persons")
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		var ps [2][]interface{}
 		err = Unmarshal(rows, &ps)
 		if err != nil {
 			t.Error(err)

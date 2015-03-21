@@ -52,7 +52,7 @@ func Unmarshal(rows *sql.Rows, v interface{}) (err error) {
 		if err = unmarshalStruct(rows, columns, vv); err != nil {
 			return
 		}
-	case reflect.Slice:
+	case reflect.Slice, reflect.Array:
 		// TODO:
 		// - []string
 		// - [][]string
@@ -60,93 +60,7 @@ func Unmarshal(rows *sql.Rows, v interface{}) (err error) {
 		// - []map[string]struct{} ?
 		// - []map[string]string{}
 		// - []map[string][]string{} ?
-		vet := vv.Type().Elem()
-		for rows.Next() {
-			e := newValue(vet)
-			ee := indirect(e)
-			switch ee.Kind() {
-			case reflect.Struct:
-				if err = unmarshalStruct(rows, columns, ee); err != nil {
-					return
-				}
-				vv = reflect.Append(vv, e.Elem())
-			case reflect.Map:
-				keyt := vet.Key()
-				valt := vet.Elem()
-				fields, key, val := genMapFields(columns, keyt, valt)
-				if err = rows.Scan(fields...); err != nil {
-					return
-				}
-
-				ee.Set(reflect.MakeMap(ee.Type()))
-				switch indirectT(valt).Kind() {
-				case reflect.Slice:
-					v := reflect.Append(indirect(newValue(valt)), val.([]reflect.Value)...)
-					ee.SetMapIndex(key, v)
-				case reflect.Array:
-					// TODO: add tests
-					v := newValue(valt).Elem()
-					ve := indirect(v)
-					for i, e := range val.([]reflect.Value) {
-						ve.Index(i).Set(e)
-					}
-					vv.SetMapIndex(key, v)
-				case reflect.Map:
-					// TODO: schema?
-				default:
-					ee.SetMapIndex(key, val.(reflect.Value).Elem())
-				}
-				vv = reflect.Append(vv, e.Elem())
-			case reflect.Slice:
-				var eis []reflect.Value
-				var slice []interface{}
-				l := len(columns)
-				eet := ee.Type()
-				for i := 0; i < l; i++ {
-					ei := newValue(eet.Elem()).Elem()
-					eis = append(eis, ei)
-					slice = append(slice, ei.Addr().Interface())
-				}
-				if err = rows.Scan(slice...); err != nil {
-					return
-				}
-				ee.Set(reflect.Append(ee, eis...))
-				vv = reflect.Append(vv, e.Elem())
-			case reflect.Array:
-			default:
-				if err = rows.Scan(e.Interface()); err != nil {
-					return
-				}
-				vv = reflect.Append(vv, e.Elem())
-			}
-		}
-		reflect.ValueOf(v).Elem().Set(vv)
-	case reflect.Array:
-		// TODO:
-		// - []string
-		// - [][]string
-		// - []struct{}
-		// - []map[string]string{}
-		var i int
-		vet := vv.Type().Elem()
-		for rows.Next() {
-			switch vet.Kind() {
-			case reflect.Struct, reflect.Ptr:
-				elem := newValue(vet)
-				if err = unmarshalStruct(rows, columns, indirect(elem)); err != nil {
-					return
-				}
-				vv.Index(i).Set(elem.Elem())
-				i++
-			case reflect.Map:
-				// TODO
-			case reflect.Slice:
-			case reflect.Array:
-			// case reflect.Ptr:
-
-			default:
-			}
-		}
+		unmarshalSliceOrArray(vv, rows, columns)
 	case reflect.Map:
 		// TODO:
 		// - map[string]string
@@ -175,13 +89,13 @@ func Unmarshal(rows *sql.Rows, v interface{}) (err error) {
 			switch valet := indirectT(valt); valet.Kind() {
 			case reflect.Slice:
 				v := vv.MapIndex(key)
-				v = assignMapSliceArray(v, valt, valet, columns, 0, val)
+				v = assignMapSliceOrArray(v, valt, valet, columns, 0, val)
 				vv.SetMapIndex(key, v)
 			case reflect.Array:
 				// TODO: same support as slice above
 				v := vv.MapIndex(key)
 				i := arri[key.Interface()]
-				v = assignMapSliceArray(v, valt, valet, columns, i, val)
+				v = assignMapSliceOrArray(v, valt, valet, columns, i, val)
 				arri[key.Interface()] = i + 1
 				vv.SetMapIndex(key, v)
 			case reflect.Map:
@@ -204,7 +118,6 @@ func Unmarshal(rows *sql.Rows, v interface{}) (err error) {
 				vv.SetMapIndex(key, val.(reflect.Value).Elem())
 			}
 		}
-		reflect.ValueOf(v).Elem().Set(vv)
 	default:
 		return fmt.Errorf("sqlkungfu: Unmarshal(unsupported type %T)", v)
 	}
@@ -437,6 +350,74 @@ func indirectT(v reflect.Type) reflect.Type {
 	return v
 }
 
+func unmarshalSliceOrArray(vv reflect.Value, rows *sql.Rows, columns []string) (err error) {
+	vet := vv.Type().Elem()
+	var i int
+	for rows.Next() {
+		e := newValue(vet)
+		ee := indirect(e)
+		switch ee.Kind() {
+		case reflect.Struct:
+			if err = unmarshalStruct(rows, columns, ee); err != nil {
+				return
+			}
+		case reflect.Map:
+			keyt := vet.Key()
+			valt := vet.Elem()
+			fields, key, val := genMapFields(columns, keyt, valt)
+			if err = rows.Scan(fields...); err != nil {
+				return
+			}
+
+			ee.Set(reflect.MakeMap(ee.Type()))
+			switch indirectT(valt).Kind() {
+			case reflect.Slice:
+				v := reflect.Append(indirect(newValue(valt)), val.([]reflect.Value)...)
+				ee.SetMapIndex(key, v)
+			case reflect.Array:
+				// TODO: add tests
+				v := newValue(valt).Elem()
+				ve := indirect(v)
+				for i, e := range val.([]reflect.Value) {
+					ve.Index(i).Set(e)
+				}
+				vv.SetMapIndex(key, v)
+			case reflect.Map:
+				// TODO: schema?
+			default:
+				ee.SetMapIndex(key, val.(reflect.Value).Elem())
+			}
+		case reflect.Slice:
+			var eis []reflect.Value
+			var slice []interface{}
+			l := len(columns)
+			eet := ee.Type()
+			for i := 0; i < l; i++ {
+				ei := newValue(eet.Elem()).Elem()
+				eis = append(eis, ei)
+				slice = append(slice, ei.Addr().Interface())
+			}
+			if err = rows.Scan(slice...); err != nil {
+				return
+			}
+			ee.Set(reflect.Append(ee, eis...))
+		case reflect.Array:
+		default:
+			if err = rows.Scan(e.Interface()); err != nil {
+				return
+			}
+		}
+		if vv.Kind() == reflect.Array {
+			vv.Index(i).Set(e.Elem())
+		} else {
+			vv.Set(reflect.Append(vv, e.Elem()))
+		}
+		i++
+	}
+
+	return
+}
+
 // TODO: refactor better naming?
 func genMapFields(columns []string, keyt, valt reflect.Type) (fields []interface{}, key reflect.Value, val interface{}) {
 	key = newValue(keyt).Elem()
@@ -524,7 +505,7 @@ func genMapFields(columns []string, keyt, valt reflect.Type) (fields []interface
 }
 
 // TODO: complete test suites for array
-func assignMapSliceArray(v reflect.Value, valt, valet reflect.Type, columns []string, arri int, val interface{}) reflect.Value {
+func assignMapSliceOrArray(v reflect.Value, valt, valet reflect.Type, columns []string, arri int, val interface{}) reflect.Value {
 	if !v.IsValid() {
 		v = newValue(valt).Elem()
 	}
@@ -611,14 +592,6 @@ func assignMapSliceArray(v reflect.Value, valt, valet reflect.Type, columns []st
 
 	return v
 }
-
-// // TODO: should not override exist value
-// func initValue(v reflect.Value) reflect.Value {
-// 	// for i, item := range itmes {
-
-// 	// }
-// 	return v
-// }
 
 // 1
 // 	t **
