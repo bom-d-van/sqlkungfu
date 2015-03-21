@@ -1324,6 +1324,101 @@ func TestUnmarshalMapSliceStruct(t *testing.T) {
 	}
 }
 
+func TestUnmarshalMapArrayStruct(t *testing.T) {
+	_, err := db.Exec(`
+		DROP TABLE IF EXISTS persons;
+
+		CREATE TABLE persons(
+			id 			integer PRIMARY KEY,
+			lastname 	varchar(255),
+			firstname 	varchar(255),
+			sex 		varchar
+		);
+
+		INSERT INTO persons (firstname, lastname, sex) VALUES ("kungfu0-0", "master0", "male");
+		INSERT INTO persons (firstname, lastname, sex) VALUES ("kungfu0-1", "master0", "male");
+		INSERT INTO persons (firstname, lastname, sex) VALUES ("kungfu1", "master1", "female");
+	`)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	type data struct {
+		FirstName string
+		Sex       string
+	}
+	{
+		rows, err := db.Query("select lastname as sqlmapkey, firstname, sex from persons")
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		ps := map[string][2]*data{}
+		err = Unmarshal(rows, &ps)
+		if err != nil {
+			t.Error(err)
+		}
+
+		want := map[string][2]*data{
+			"master0": [2]*data{
+				&data{
+					FirstName: "kungfu0-0",
+					Sex:       "male",
+				},
+				&data{
+					FirstName: "kungfu0-1",
+					Sex:       "male",
+				},
+			},
+			"master1": [2]*data{
+				&data{
+					FirstName: "kungfu1",
+					Sex:       "female",
+				},
+				nil,
+			},
+		}
+		if !reflect.DeepEqual(ps, want) {
+			reportErr(t, ps, want)
+		}
+	}
+	{
+		rows, err := db.Query("select lastname as sqlmapkey, firstname, sex from persons")
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		ps := map[string]*[2]data{}
+		err = Unmarshal(rows, &ps)
+		if err != nil {
+			t.Error(err)
+		}
+
+		want := map[string]*[2]data{
+			"master0": &[2]data{
+				data{
+					FirstName: "kungfu0-0",
+					Sex:       "male",
+				},
+				data{
+					FirstName: "kungfu0-1",
+					Sex:       "male",
+				},
+			},
+			"master1": &[2]data{
+				data{
+					FirstName: "kungfu1",
+					Sex:       "female",
+				},
+				data{},
+			},
+		}
+		if !reflect.DeepEqual(ps, want) {
+			reportErr(t, ps, want)
+		}
+	}
+}
+
 func TestUnmarshalMapSliceMap(t *testing.T) {
 	_, err := db.Exec(`
 		DROP TABLE IF EXISTS persons;
