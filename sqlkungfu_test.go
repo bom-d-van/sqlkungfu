@@ -52,6 +52,67 @@ func init() {
 	}
 }
 
+// type unmarshalCase struct {
+// 	query string
+// 	got   interface{}
+// 	want  interface{}
+// }
+
+// var unmarshalCases = []unmarshalCase{
+// 	func() unmarshalCase {
+// 		var person **Person
+
+// 		last := "master"
+// 		lastp := &last
+// 		lastpp := &lastp
+// 		return unmarshalCase{
+// 			"select * from persons",
+// 			person,
+// 			&Person{
+// 				Id:        1,
+// 				FirstName: "kungfu",
+// 				LastName:  &lastpp,
+// 				Age:       24,
+// 				Address:   Address{Addr: "Shaolin Temple"},
+// 			},
+// 		}
+// 	}(),
+// }
+
+// func TestUnmarshal(t *testing.T) {
+// 	_, err := db.Exec(`
+// 		DROP TABLE IF EXISTS persons;
+
+// 		CREATE TABLE persons(
+// 			id integer PRIMARY KEY,
+// 			lastname varchar(255),
+// 			firstname varchar(255),
+// 			age integer,
+// 			addr string
+// 		);
+
+// 		INSERT INTO persons (firstname, lastname, age, addr) VALUES ("kungfu", "master", 24, "Shaolin Temple");
+// 	`)
+// 	if err != nil {
+// 		t.Fatal(err)
+// 	}
+
+// 	for _, c := range unmarshalCases {
+// 		rows, err := db.Query(c.query)
+// 		if err != nil {
+// 			t.Fatal(err)
+// 		}
+
+// 		err = Unmarshal(rows, &c.got)
+// 		if err != nil {
+// 			t.Error(err)
+// 		}
+// 		if reflect.DeepEqual(c.got, c.want) {
+// 			reportErr(t, c.got, c.want)
+// 		}
+// 	}
+// }
+
 func TestUnmarshalStruct(t *testing.T) {
 	_, err := db.Exec(`
 		DROP TABLE IF EXISTS persons;
@@ -306,9 +367,8 @@ func TestUnmarshalSchema(t *testing.T) {
 			Info map[string]map[string]interface{}
 		}
 
-		var p data
-
-		err = Unmarshal(rows, &p)
+		var got data
+		err = Unmarshal(rows, &got)
 		if err != nil {
 			t.Error(err)
 		}
@@ -321,9 +381,7 @@ func TestUnmarshalSchema(t *testing.T) {
 			},
 		}
 
-		if !reflect.DeepEqual(p, want) {
-			reportErr(t, p, want)
-		}
+		reportErrIfNotEqual(t, got, want)
 	}
 	{
 		rows, err := db.Query("select lastname 'name.l0.last', firstname 'name.l0.first', age 'info.l0.l1.num.age' from persons")
@@ -336,9 +394,8 @@ func TestUnmarshalSchema(t *testing.T) {
 			Info map[string]map[string]int
 		}
 
-		var p data
-
-		err = Unmarshal(rows, &p)
+		var got data
+		err = Unmarshal(rows, &got)
 		if err != nil {
 			t.Error(err)
 		}
@@ -351,10 +408,7 @@ func TestUnmarshalSchema(t *testing.T) {
 				},
 			},
 		}
-
-		if !reflect.DeepEqual(p, want) {
-			reportErr(t, p, want)
-		}
+		reportErrIfNotEqual(t, got, want)
 	}
 	{
 		rows, err := db.Query("select lastname 'name.last', firstname 'name.first', age 'info.num.age', addr 'info.text.addr' from persons")
@@ -366,8 +420,8 @@ func TestUnmarshalSchema(t *testing.T) {
 			Name map[string]string
 			Info map[string]interface{}
 		}
-		var p data
-		err = Unmarshal(rows, &p)
+		var got data
+		err = Unmarshal(rows, &got)
 		if err != nil {
 			t.Error(err)
 		}
@@ -380,9 +434,7 @@ func TestUnmarshalSchema(t *testing.T) {
 			},
 		}
 
-		if !reflect.DeepEqual(p, want) {
-			reportErr(t, p, want)
-		}
+		reportErrIfNotEqual(t, got, want)
 	}
 	{
 		rows, err := db.Query("select lastname 'name.last', firstname 'name.first', age 'info.num.age', addr 'info.text.addr' from persons")
@@ -398,9 +450,9 @@ func TestUnmarshalSchema(t *testing.T) {
 			Name map[string]string
 			Info map[string]info
 		}
-		var p data
+		var got data
 
-		err = Unmarshal(rows, &p)
+		err = Unmarshal(rows, &got)
 		if err != nil {
 			t.Error(err)
 		}
@@ -413,9 +465,7 @@ func TestUnmarshalSchema(t *testing.T) {
 			},
 		}
 
-		if !reflect.DeepEqual(p, want) {
-			reportErr(t, p, want)
-		}
+		reportErrIfNotEqual(t, got, want)
 	}
 	{
 		rows, err := db.Query("select lastname 'name.last', firstname 'name.first', age 'info.l0.l1.l2.num.age', addr 'info.l0.l1.l2.text.addr' from persons")
@@ -436,9 +486,9 @@ func TestUnmarshalSchema(t *testing.T) {
 			Name map[string]string
 			Info info
 		}
-		var p data
+		var got data
 
-		err = Unmarshal(rows, &p)
+		err = Unmarshal(rows, &got)
 		if err != nil {
 			t.Error(err)
 		}
@@ -451,9 +501,7 @@ func TestUnmarshalSchema(t *testing.T) {
 			}}}},
 		}
 
-		if !reflect.DeepEqual(p, want) {
-			reportErr(t, p, want)
-		}
+		reportErrIfNotEqual(t, got, want)
 	}
 	{
 		rows, err := db.Query("select lastname 'name.last', firstname 'name.first', age 'info.num.age', addr 'info.text.addr' from persons")
@@ -469,9 +517,9 @@ func TestUnmarshalSchema(t *testing.T) {
 			Name map[string]string
 			Info info
 		}
-		var p data
+		var got data
 
-		err = Unmarshal(rows, &p)
+		err = Unmarshal(rows, &got)
 		if err != nil {
 			t.Error(err)
 		}
@@ -484,19 +532,37 @@ func TestUnmarshalSchema(t *testing.T) {
 			},
 		}
 
-		if !reflect.DeepEqual(p, want) {
-			reportErr(t, p, want)
-		}
+		reportErrIfNotEqual(t, got, want)
 	}
+	{
+		rows, err := db.Query("select lastname 'name.last', firstname 'name.first', age 'info.num.age', addr 'info.text.addr' from persons")
+		if err != nil {
+			t.Fatal(err)
+		}
 
-	// var p map[string]interface{}
-	// err = Unmarshal(rows, &p)
-	// if err != nil {
-	// 	t.Error(err)
-	// }
+		var got map[string]interface{}
+
+		err = Unmarshal(rows, &got)
+		if err != nil {
+			t.Error(err)
+		}
+
+		want := map[string]interface{}{
+			"name": map[string]interface{}{"first": "kungfu", "last": "master"},
+			"info": map[string]interface{}{
+				"num":  map[string]interface{}{"age": int64(24)},
+				"text": map[string]interface{}{"addr": "Shaolin Temple"},
+			},
+		}
+
+		reportErrIfNotEqual(t, got, want)
+	}
 }
 
-func reportErr(t *testing.T, got, want interface{}) {
+func reportErrIfNotEqual(t *testing.T, got, want interface{}) {
+	if reflect.DeepEqual(got, want) {
+		return
+	}
 	var err error
 	if got, err = json.MarshalIndent(got, "", "  "); err != nil {
 		t.Fatal(err)
@@ -586,7 +652,6 @@ func TestUnmarshalSlicePlain(t *testing.T) {
 			t.Errorf("got %s; want %s", ps[0], "kungfu")
 		}
 	}
-	return
 	{
 		rows, err := db.Query("select firstname from persons")
 		if err != nil {
@@ -692,6 +757,72 @@ func TestUnmarshalSliceSlice(t *testing.T) {
 				t.Errorf("got %s; want %s", got, want)
 			}
 		}
+	}
+}
+
+func TestUnmarshalSliceArray(t *testing.T) {
+	_, err := db.Exec(`
+		DROP TABLE IF EXISTS persons;
+
+		CREATE TABLE persons(
+			id integer PRIMARY KEY,
+			lastname varchar(255),
+			firstname varchar(255)
+		);
+
+		INSERT INTO persons (firstname, lastname) VALUES ("kungfu0", "master0");
+		INSERT INTO persons (firstname, lastname) VALUES ("kungfu1", "master1");
+	`)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	{
+		rows, err := db.Query("select firstname, lastname from persons")
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		var got [][2]string
+		err = Unmarshal(rows, &got)
+		if err != nil {
+			t.Error(err)
+		}
+
+		want := [][2]string{{"kungfu0", "master0"}, {"kungfu1", "master1"}}
+		reportErrIfNotEqual(t, got, want)
+	}
+	{
+		rows, err := db.Query("select firstname, lastname from persons")
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		var got []**[2]string
+		err = Unmarshal(rows, &got)
+		if err != nil {
+			t.Error(err)
+		}
+
+		s0 := &[2]string{"kungfu0", "master0"}
+		s1 := &[2]string{"kungfu1", "master1"}
+		want := []**[2]string{&s0, &s1}
+		reportErrIfNotEqual(t, got, want)
+	}
+	{
+		rows, err := db.Query("select id, firstname, lastname from persons")
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		var got [][3]interface{}
+		err = Unmarshal(rows, &got)
+		if err != nil {
+			t.Error(err)
+		}
+
+		want := [][3]interface{}{{int64(1), "kungfu0", "master0"}, {int64(2), "kungfu1", "master1"}}
+		reportErrIfNotEqual(t, got, want)
 	}
 }
 
@@ -1465,9 +1596,7 @@ func TestUnmarshalMapArrayStruct(t *testing.T) {
 				nil,
 			},
 		}
-		if !reflect.DeepEqual(ps, want) {
-			reportErr(t, ps, want)
-		}
+		reportErrIfNotEqual(t, ps, want)
 	}
 	{
 		rows, err := db.Query("select lastname as sqlmapkey, firstname, sex from persons")
@@ -1500,9 +1629,7 @@ func TestUnmarshalMapArrayStruct(t *testing.T) {
 				data{},
 			},
 		}
-		if !reflect.DeepEqual(ps, want) {
-			reportErr(t, ps, want)
-		}
+		reportErrIfNotEqual(t, ps, want)
 	}
 }
 

@@ -49,9 +49,7 @@ func Unmarshal(rows *sql.Rows, v interface{}) (err error) {
 	switch vv.Kind() {
 	case reflect.Struct:
 		rows.Next()
-		if err = unmarshalStruct(rows, columns, vv); err != nil {
-			return
-		}
+		err = unmarshalStruct(rows, columns, vv)
 	case reflect.Slice, reflect.Array:
 		// TODO:
 		// - []string
@@ -60,64 +58,9 @@ func Unmarshal(rows *sql.Rows, v interface{}) (err error) {
 		// - []map[string]struct{} ?
 		// - []map[string]string{}
 		// - []map[string][]string{} ?
-		unmarshalSliceOrArray(vv, rows, columns)
+		err = unmarshalSliceOrArray(vv, rows, columns)
 	case reflect.Map:
-		// TODO:
-		// - map[string]string
-		// - map[*string]string
-		//
-		// - map[struct]struct{}
-		//
-		// - map[string][]string
-		// - map[string]struct{}
-		// - map[string]map[string]string{}
-		//
-		// - map[string][][]string
-		// - map[string][]struct{}
-		// - map[string][]map[string]string{}
-		vvt := vv.Type()
-		keyt := vvt.Key()
-		valt := vvt.Elem()
-		arri := map[interface{}]int{}
-		for rows.Next() {
-			fields, key, val := genMapFields(columns, keyt, valt)
-
-			if err = rows.Scan(fields...); err != nil {
-				return
-			}
-
-			switch valet := indirectT(valt); valet.Kind() {
-			case reflect.Slice:
-				v := vv.MapIndex(key)
-				v = assignMapSliceOrArray(v, valt, valet, columns, 0, val)
-				vv.SetMapIndex(key, v)
-			case reflect.Array:
-				// TODO: same support as slice above
-				v := vv.MapIndex(key)
-				i := arri[key.Interface()]
-				v = assignMapSliceOrArray(v, valt, valet, columns, i, val)
-				arri[key.Interface()] = i + 1
-				vv.SetMapIndex(key, v)
-			case reflect.Map:
-				vals := val.([]reflect.Value)
-				v := newValue(valt).Elem()
-				ve := v
-				if v.Kind() == reflect.Ptr {
-					ve = indirect(v)
-				}
-				for i, col := range columns {
-					if col == mapKey {
-						continue
-					}
-					ve.SetMapIndex(reflect.ValueOf(col), vals[i])
-				}
-				vv.SetMapIndex(key, v)
-			case reflect.Interface:
-				fallthrough
-			default:
-				vv.SetMapIndex(key, val.(reflect.Value).Elem())
-			}
-		}
+		err = unmarshalMap(vv, rows, columns)
 	default:
 		return fmt.Errorf("sqlkungfu: Unmarshal(unsupported type %T)", v)
 	}
@@ -271,9 +214,6 @@ func getField(v reflect.Value, schema string) (f reflect.Value, pos int) {
 	names := strings.Split(schema, ".")
 	for _, name := range names {
 		v = indirect(v)
-		// if vk := v.Kind(); vk == reflect.Map {
-		// 	continue
-		// } else
 		if v.Kind() != reflect.Struct {
 			break
 		}
@@ -310,10 +250,6 @@ func getField(v reflect.Value, schema string) (f reflect.Value, pos int) {
 		v = f
 		pos++
 	}
-
-	// if f.Kind() != reflect.Invalid {
-	// 	return
-	// }
 
 	return
 }
@@ -384,10 +320,11 @@ func unmarshalSliceOrArray(vv reflect.Value, rows *sql.Rows, columns []string) (
 				vv.SetMapIndex(key, v)
 			case reflect.Map:
 				// TODO: schema?
+			case reflect.Interface:
 			default:
 				ee.SetMapIndex(key, val.(reflect.Value).Elem())
 			}
-		case reflect.Slice:
+		case reflect.Slice, reflect.Array:
 			var eis []reflect.Value
 			var slice []interface{}
 			l := len(columns)
@@ -400,8 +337,17 @@ func unmarshalSliceOrArray(vv reflect.Value, rows *sql.Rows, columns []string) (
 			if err = rows.Scan(slice...); err != nil {
 				return
 			}
-			ee.Set(reflect.Append(ee, eis...))
-		case reflect.Array:
+			if ee.Kind() == reflect.Slice {
+				ee.Set(reflect.Append(ee, eis...))
+			} else {
+				for i, ei := range eis {
+					if b, ok := ei.Interface().([]uint8); ok {
+						ee.Index(i).Set(reflect.ValueOf(string(b)))
+					} else {
+						ee.Index(i).Set(ei)
+					}
+				}
+			}
 		default:
 			if err = rows.Scan(e.Interface()); err != nil {
 				return
@@ -415,6 +361,92 @@ func unmarshalSliceOrArray(vv reflect.Value, rows *sql.Rows, columns []string) (
 		i++
 	}
 
+	return
+}
+
+// TODO:
+// - map[string]string
+// - map[*string]string
+//
+// - map[struct]struct{}
+//
+// - map[string][]string
+// - map[string]struct{}
+// - map[string]map[string]string{}
+//
+// - map[string][][]string
+// - map[string][]struct{}
+// - map[string][]map[string]string{}
+func unmarshalMap(vv reflect.Value, rows *sql.Rows, columns []string) (err error) {
+	vvt := vv.Type()
+	keyt := vvt.Key()
+	valt := vvt.Elem()
+	arri := map[interface{}]int{}
+	for rows.Next() {
+		fields, key, val := genMapFields(columns, keyt, valt)
+
+		if err = rows.Scan(fields...); err != nil {
+			return
+		}
+
+		switch valet := indirectT(valt); valet.Kind() {
+		case reflect.Slice:
+			v := vv.MapIndex(key)
+			v = assignMapSliceOrArray(v, valt, valet, columns, 0, val)
+			vv.SetMapIndex(key, v)
+		case reflect.Array:
+			// TODO: same support as slice above
+			v := vv.MapIndex(key)
+			i := arri[key.Interface()]
+			v = assignMapSliceOrArray(v, valt, valet, columns, i, val)
+			arri[key.Interface()] = i + 1
+			vv.SetMapIndex(key, v)
+		case reflect.Map:
+			vals := val.([]reflect.Value)
+			v := newValue(valt).Elem()
+			ve := v
+			if v.Kind() == reflect.Ptr {
+				ve = indirect(v)
+			}
+			for i, col := range columns {
+				if col == mapKey {
+					continue
+				}
+				ve.SetMapIndex(reflect.ValueOf(col), vals[i])
+			}
+			vv.SetMapIndex(key, v)
+		case reflect.Interface:
+			if valet.NumMethod() != 0 {
+				vv.SetMapIndex(key, val.(reflect.Value).Elem())
+				continue
+			}
+			for i, col := range columns {
+				if col == mapKey {
+					continue
+				}
+				names := strings.Split(col, ".")
+				v := vv
+				for _, name := range names[:len(names)-1] {
+					if v.Kind() == reflect.Interface {
+						v = v.Elem()
+					}
+					nv := v.MapIndex(reflect.ValueOf(name))
+					if !nv.IsValid() {
+						nv = reflect.MakeMap(reflect.TypeOf(map[string]interface{}{}))
+						v.SetMapIndex(reflect.ValueOf(name), nv)
+					}
+					v = nv
+				}
+				val := *fields[i].(*interface{})
+				if b, ok := val.([]uint8); ok {
+					val = string(b)
+				}
+				v.Interface().(map[string]interface{})[names[len(names)-1]] = val
+			}
+		default:
+			vv.SetMapIndex(key, val.(reflect.Value).Elem())
+		}
+	}
 	return
 }
 
