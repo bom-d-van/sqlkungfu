@@ -9,10 +9,18 @@ import (
 
 // http://godoc.org/github.com/jmoiron/sqlx
 
-const (
-	mapKey  = "sqlmapkey"
-	mapKey2 = "sqlmapkey2"
-)
+// const (
+// 	mapKey = "sqlmapkey"
+// )
+
+type Master struct {
+	SchemaSeparator  string
+	MapKey           string
+	MapUint8ToString bool
+
+	// TODO: with tag support
+	FieldNameMap func(s interface{}, name string) string
+}
 
 // map
 // normal
@@ -20,7 +28,7 @@ const (
 // To-Do:
 // - do not override non-nil values
 // - convert []uint8 into a string for interface{} values
-func Unmarshal(rows *sql.Rows, v interface{}) (err error) {
+func (m Master) Unmarshal(rows *sql.Rows, v interface{}) (err error) {
 	defer func() {
 		if er := rows.Close(); er != nil {
 			if err == nil {
@@ -49,7 +57,7 @@ func Unmarshal(rows *sql.Rows, v interface{}) (err error) {
 	switch vv.Kind() {
 	case reflect.Struct:
 		rows.Next()
-		err = unmarshalStruct(rows, columns, vv)
+		err = m.unmarshalStruct(rows, columns, vv)
 	case reflect.Slice, reflect.Array:
 		// TODO:
 		// - []string
@@ -58,9 +66,9 @@ func Unmarshal(rows *sql.Rows, v interface{}) (err error) {
 		// - []map[string]struct{} ?
 		// - []map[string]string{}
 		// - []map[string][]string{} ?
-		err = unmarshalSliceOrArray(vv, rows, columns)
+		err = m.unmarshalSliceOrArray(vv, rows, columns)
 	case reflect.Map:
-		err = unmarshalMap(vv, rows, columns)
+		err = m.unmarshalMap(vv, rows, columns)
 	default:
 		return fmt.Errorf("sqlkungfu: Unmarshal(unsupported type %T)", v)
 	}
@@ -68,7 +76,7 @@ func Unmarshal(rows *sql.Rows, v interface{}) (err error) {
 	return
 }
 
-func unmarshalStruct(rows *sql.Rows, columns []string, v reflect.Value) (err error) {
+func (m Master) unmarshalStruct(rows *sql.Rows, columns []string, v reflect.Value) (err error) {
 	var (
 		fields   []interface{}
 		valMap   = map[string]reflect.Value{}
@@ -79,7 +87,7 @@ func unmarshalStruct(rows *sql.Rows, columns []string, v reflect.Value) (err err
 		}{}
 	)
 	for _, col := range columns {
-		field, pos := getField(v, col)
+		field, pos := m.getField(v, col)
 		if !field.IsValid() {
 			continue
 		}
@@ -96,13 +104,13 @@ func unmarshalStruct(rows *sql.Rows, columns []string, v reflect.Value) (err err
 				field.Set(newValue(field.Type()).Elem())
 			}
 			info := fieldMap[col]
-			names := strings.Split(col, ".")
+			names := strings.Split(col, m.SchemaSeparator)
 			info.names = names[pos:]
 			info.Value = field
 			index := names[pos-1]
 			info.valMapPrefix = index
 			val = info.Value
-			if val, info.names, err = parseColSchema(valMap, val, index, info.names); err != nil {
+			if val, info.names, err = m.parseColSchema(valMap, val, index, info.names); err != nil {
 				return
 			}
 			fieldMap[col] = info
@@ -131,18 +139,18 @@ func unmarshalStruct(rows *sql.Rows, columns []string, v reflect.Value) (err err
 				field.Set(newValue(field.Type()).Elem())
 			}
 
-			setColSchema(field.names, field.Value, reflect.ValueOf(fields[i]), valMap, field.valMapPrefix)
+			m.setColSchema(field.names, field.Value, reflect.ValueOf(fields[i]), valMap, field.valMapPrefix)
 		}
 	}
 
 	return
 }
 
-func parseColSchema(valMap map[string]reflect.Value, val reflect.Value, index string, names []string) (reflect.Value, []string, error) {
+func (m Master) parseColSchema(valMap map[string]reflect.Value, val reflect.Value, index string, names []string) (reflect.Value, []string, error) {
 	var tlen int
 	for i, name := range names {
 		if index != "" {
-			index += "."
+			index += m.SchemaSeparator
 		}
 		index += name
 		vale := indirect(val)
@@ -170,7 +178,7 @@ func parseColSchema(valMap map[string]reflect.Value, val reflect.Value, index st
 					switch indirectT(et).Kind() {
 					case reflect.Interface, reflect.Map, reflect.Struct:
 					default:
-						index += "." + strings.Join(names[i+1:], ".")
+						index += m.SchemaSeparator + strings.Join(names[i+1:], m.SchemaSeparator)
 					}
 				}
 				val = newValue(et)
@@ -179,20 +187,20 @@ func parseColSchema(valMap map[string]reflect.Value, val reflect.Value, index st
 			tlen++
 		}
 	}
-	names = append(names[:tlen-1], strings.Join(names[tlen-1:], "."))
+	names = append(names[:tlen-1], strings.Join(names[tlen-1:], m.SchemaSeparator))
 	return val, names, nil
 }
 
-func setColSchema(names []string, field, val reflect.Value, valMap map[string]reflect.Value, valMapPrefix string) {
+func (m Master) setColSchema(names []string, field, val reflect.Value, valMap map[string]reflect.Value, valMapPrefix string) {
 	l := len(names)
 	// TODO: be configurable (maybe by struct tags?)
-	if b, ok := val.Elem().Interface().([]uint8); ok {
+	if b, ok := val.Elem().Interface().([]uint8); ok && m.MapUint8ToString {
 		s := string(b)
 		val = reflect.ValueOf(&s)
 	}
 	for i, _ := range names[1:] {
 		name := names[l-i-1]
-		v, _ := valMap[valMapPrefix+"."+strings.Join(names[:l-i-1], ".")]
+		v, _ := valMap[valMapPrefix+m.SchemaSeparator+strings.Join(names[:l-i-1], m.SchemaSeparator)]
 		ve := indirect(v)
 		switch ve.Kind() {
 		case reflect.Struct:
@@ -202,16 +210,16 @@ func setColSchema(names []string, field, val reflect.Value, valMap map[string]re
 		case reflect.Map:
 			ve.SetMapIndex(reflect.ValueOf(name), val.Elem())
 		}
-		valMap[valMapPrefix+"."+strings.Join(names[:l-i-1], ".")] = v
+		valMap[valMapPrefix+m.SchemaSeparator+strings.Join(names[:l-i-1], m.SchemaSeparator)] = v
 		val = v
 	}
 	field.SetMapIndex(reflect.ValueOf(names[0]), val.Elem())
 }
 
 // support multiple name casting: snake, lowercases
-func getField(v reflect.Value, schema string) (f reflect.Value, pos int) {
+func (m Master) getField(v reflect.Value, schema string) (f reflect.Value, pos int) {
 	// TODO: indirect(v) here is overkill?
-	names := strings.Split(schema, ".")
+	names := strings.Split(schema, m.SchemaSeparator)
 	for _, name := range names {
 		v = indirect(v)
 		if v.Kind() != reflect.Struct {
@@ -236,7 +244,7 @@ func getField(v reflect.Value, schema string) (f reflect.Value, pos int) {
 
 		for i := 0; i < num; i++ {
 			if sf := vt.FieldByIndex([]int{i}); indirectT(sf.Type).Kind() == reflect.Struct {
-				f, _ = getField(v.FieldByIndex([]int{i}), name)
+				f, _ = m.getField(v.FieldByIndex([]int{i}), name)
 			}
 			if f.IsValid() {
 				break
@@ -286,7 +294,7 @@ func indirectT(v reflect.Type) reflect.Type {
 	return v
 }
 
-func unmarshalSliceOrArray(vv reflect.Value, rows *sql.Rows, columns []string) (err error) {
+func (m Master) unmarshalSliceOrArray(vv reflect.Value, rows *sql.Rows, columns []string) (err error) {
 	vet := vv.Type().Elem()
 	var i int
 	for rows.Next() {
@@ -294,13 +302,13 @@ func unmarshalSliceOrArray(vv reflect.Value, rows *sql.Rows, columns []string) (
 		ee := indirect(e)
 		switch ee.Kind() {
 		case reflect.Struct:
-			if err = unmarshalStruct(rows, columns, ee); err != nil {
+			if err = m.unmarshalStruct(rows, columns, ee); err != nil {
 				return
 			}
 		case reflect.Map:
 			keyt := vet.Key()
 			valt := vet.Elem()
-			fields, key, val := genMapFields(columns, keyt, valt)
+			fields, key, val := m.genMapFields(columns, keyt, valt)
 			if err = rows.Scan(fields...); err != nil {
 				return
 			}
@@ -341,7 +349,7 @@ func unmarshalSliceOrArray(vv reflect.Value, rows *sql.Rows, columns []string) (
 				ee.Set(reflect.Append(ee, eis...))
 			} else {
 				for i, ei := range eis {
-					if b, ok := ei.Interface().([]uint8); ok {
+					if b, ok := ei.Interface().([]uint8); ok && m.MapUint8ToString {
 						ee.Index(i).Set(reflect.ValueOf(string(b)))
 					} else {
 						ee.Index(i).Set(ei)
@@ -377,13 +385,13 @@ func unmarshalSliceOrArray(vv reflect.Value, rows *sql.Rows, columns []string) (
 // - map[string][][]string
 // - map[string][]struct{}
 // - map[string][]map[string]string{}
-func unmarshalMap(vv reflect.Value, rows *sql.Rows, columns []string) (err error) {
+func (m Master) unmarshalMap(vv reflect.Value, rows *sql.Rows, columns []string) (err error) {
 	vvt := vv.Type()
 	keyt := vvt.Key()
 	valt := vvt.Elem()
 	arri := map[interface{}]int{}
 	for rows.Next() {
-		fields, key, val := genMapFields(columns, keyt, valt)
+		fields, key, val := m.genMapFields(columns, keyt, valt)
 
 		if err = rows.Scan(fields...); err != nil {
 			return
@@ -392,13 +400,13 @@ func unmarshalMap(vv reflect.Value, rows *sql.Rows, columns []string) (err error
 		switch valet := indirectT(valt); valet.Kind() {
 		case reflect.Slice:
 			v := vv.MapIndex(key)
-			v = assignMapSliceOrArray(v, valt, valet, columns, 0, val)
+			v = m.assignMapSliceOrArray(v, valt, valet, columns, 0, val)
 			vv.SetMapIndex(key, v)
 		case reflect.Array:
 			// TODO: same support as slice above
 			v := vv.MapIndex(key)
 			i := arri[key.Interface()]
-			v = assignMapSliceOrArray(v, valt, valet, columns, i, val)
+			v = m.assignMapSliceOrArray(v, valt, valet, columns, i, val)
 			arri[key.Interface()] = i + 1
 			vv.SetMapIndex(key, v)
 		case reflect.Map:
@@ -409,7 +417,7 @@ func unmarshalMap(vv reflect.Value, rows *sql.Rows, columns []string) (err error
 				ve = indirect(v)
 			}
 			for i, col := range columns {
-				if col == mapKey {
+				if col == m.MapKey {
 					continue
 				}
 				ve.SetMapIndex(reflect.ValueOf(col), vals[i])
@@ -421,10 +429,10 @@ func unmarshalMap(vv reflect.Value, rows *sql.Rows, columns []string) (err error
 				continue
 			}
 			for i, col := range columns {
-				if col == mapKey {
+				if col == m.MapKey {
 					continue
 				}
-				names := strings.Split(col, ".")
+				names := strings.Split(col, m.SchemaSeparator)
 				v := vv
 				for _, name := range names[:len(names)-1] {
 					if v.Kind() == reflect.Interface {
@@ -438,7 +446,7 @@ func unmarshalMap(vv reflect.Value, rows *sql.Rows, columns []string) (err error
 					v = nv
 				}
 				val := *fields[i].(*interface{})
-				if b, ok := val.([]uint8); ok {
+				if b, ok := val.([]uint8); ok && m.MapUint8ToString {
 					val = string(b)
 				}
 				v.Interface().(map[string]interface{})[names[len(names)-1]] = val
@@ -451,7 +459,7 @@ func unmarshalMap(vv reflect.Value, rows *sql.Rows, columns []string) (err error
 }
 
 // TODO: refactor better naming?
-func genMapFields(columns []string, keyt, valt reflect.Type) (fields []interface{}, key reflect.Value, val interface{}) {
+func (m Master) genMapFields(columns []string, keyt, valt reflect.Type) (fields []interface{}, key reflect.Value, val interface{}) {
 	key = newValue(keyt).Elem()
 	valet := indirectT(valt)
 	if k := valet.Kind(); k == reflect.Array || k == reflect.Slice {
@@ -463,13 +471,13 @@ func genMapFields(columns []string, keyt, valt reflect.Type) (fields []interface
 	}
 
 	for i, col := range columns {
-		if col == mapKey || strings.HasPrefix(col, mapKey+".") {
+		if col == m.MapKey || strings.HasPrefix(col, m.MapKey+m.SchemaSeparator) {
 			if key.Kind() == reflect.Ptr {
 				key = indirect(key)
 			}
 			if key.Kind() == reflect.Struct {
-				col = strings.Replace(col, mapKey+".", "", 1)
-				f, _ := getField(key, col)
+				col = strings.Replace(col, m.MapKey+m.SchemaSeparator, "", 1)
+				f, _ := m.getField(key, col)
 				fields = append(fields, f.Addr().Interface())
 			} else {
 				fields = append(fields, key.Addr().Interface())
@@ -482,7 +490,7 @@ func genMapFields(columns []string, keyt, valt reflect.Type) (fields []interface
 			if val == nil {
 				val = newValue(valt)
 			}
-			f, _ := getField(val.(reflect.Value), col)
+			f, _ := m.getField(val.(reflect.Value), col)
 			fields = append(fields, f.Addr().Interface())
 		case reflect.Slice:
 			if val == nil {
@@ -537,7 +545,7 @@ func genMapFields(columns []string, keyt, valt reflect.Type) (fields []interface
 }
 
 // TODO: complete test suites for array
-func assignMapSliceOrArray(v reflect.Value, valt, valet reflect.Type, columns []string, arri int, val interface{}) reflect.Value {
+func (m Master) assignMapSliceOrArray(v reflect.Value, valt, valet reflect.Type, columns []string, arri int, val interface{}) reflect.Value {
 	if !v.IsValid() {
 		v = newValue(valt).Elem()
 	}
@@ -595,7 +603,7 @@ func assignMapSliceOrArray(v reflect.Value, valt, valet reflect.Type, columns []
 			valee = indirect(vale)
 		}
 		for i, col := range columns {
-			if col == mapKey {
+			if col == m.MapKey {
 				continue
 			}
 			valee.SetMapIndex(reflect.ValueOf(col), vals[i])
@@ -659,10 +667,6 @@ func newValue(t reflect.Type) (v reflect.Value) {
 // 	return
 // }
 
-func UnmarshalRow(row *sql.Row, v interface{}) error {
-	return nil
-}
-
 func Insert(db *sql.DB, v interface{}) (string, error) {
 	return "", nil
 }
@@ -671,17 +675,17 @@ func Update(db *sql.DB, v interface{}) (string, error) {
 	return "", nil
 }
 
-func Columns(v interface{}) (cols []string) {
-	vt := reflect.TypeOf(v)
-	count := vt.NumField()
-	for i := 0; i < count; i++ {
-		field := vt.Field(i)
-		cols = append(cols, strings.ToLower(field.Name))
-	}
+// func Columns(v interface{}) (cols []string) {
+// 	vt := reflect.TypeOf(v)
+// 	count := vt.NumField()
+// 	for i := 0; i < count; i++ {
+// 		field := vt.Field(i)
+// 		cols = append(cols, strings.ToLower(field.Name))
+// 	}
 
-	return nil
-}
+// 	return nil
+// }
 
-func ColumnsPrefix(v interface{}, prefix string) []string {
-	return nil
-}
+// func ColumnsPrefix(v interface{}, prefix string) []string {
+// 	return nil
+// }
