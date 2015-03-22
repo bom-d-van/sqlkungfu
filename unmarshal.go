@@ -7,21 +7,6 @@ import (
 	"strings"
 )
 
-// http://godoc.org/github.com/jmoiron/sqlx
-
-// const (
-// 	mapKey = "sqlmapkey"
-// )
-
-type Master struct {
-	SchemaSeparator  string
-	MapKey           string
-	MapUint8ToString bool
-
-	// TODO: with tag support
-	FieldNameMap func(s interface{}, name string) string
-}
-
 // map
 // normal
 // join
