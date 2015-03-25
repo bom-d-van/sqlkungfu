@@ -13,6 +13,7 @@ import (
 // To-Do:
 // - do not override non-nil values
 // - convert []uint8 into a string for interface{} values
+// - support inline field tag
 func (m Master) Unmarshal(rows *sql.Rows, v interface{}) (err error) {
 	defer func() {
 		if er := rows.Close(); er != nil {
@@ -215,9 +216,16 @@ func (m Master) getField(v reflect.Value, schema string) (f reflect.Value, pos i
 		vt := v.Type()
 		for i := 0; i < num; i++ {
 			sf := vt.FieldByIndex([]int{i})
-			if strings.ToLower(sf.Name) == name {
+			options := strings.Split(sf.Tag.Get("sqlkungfu"), ",")
+			if options[0] == name || strings.ToLower(sf.Name) == name {
 				f = v.FieldByIndex([]int{i})
 				break
+			}
+
+			if indirectT(sf.Type).Kind() == reflect.Struct && (sf.Anonymous || optionsContain(options[1:], "inline") || len(names) > 1) {
+				if f, _ = m.getField(v.FieldByIndex([]int{i}), name); f.IsValid() {
+					break
+				}
 			}
 		}
 
@@ -226,22 +234,6 @@ func (m Master) getField(v reflect.Value, schema string) (f reflect.Value, pos i
 			pos++
 			continue
 		}
-
-		for i := 0; i < num; i++ {
-			if sf := vt.FieldByIndex([]int{i}); indirectT(sf.Type).Kind() == reflect.Struct {
-				f, _ = m.getField(v.FieldByIndex([]int{i}), name)
-			}
-			if f.IsValid() {
-				break
-			}
-		}
-
-		if !f.IsValid() {
-			break
-		}
-
-		v = f
-		pos++
 	}
 
 	return
@@ -434,7 +426,11 @@ func (m Master) unmarshalMap(vv reflect.Value, rows *sql.Rows, columns []string)
 				if b, ok := val.([]uint8); ok && m.MapUint8ToString {
 					val = string(b)
 				}
-				v.Interface().(map[string]interface{})[names[len(names)-1]] = val
+				// v.Interface().(map[string]interface{})[names[len(names)-1]] = val
+				if v.Kind() == reflect.Interface {
+					v = v.Elem()
+				}
+				v.SetMapIndex(reflect.ValueOf(names[len(names)-1]), reflect.ValueOf(val))
 			}
 		default:
 			vv.SetMapIndex(key, val.(reflect.Value).Elem())
@@ -651,14 +647,6 @@ func newValue(t reflect.Type) (v reflect.Value) {
 // 	}
 // 	return
 // }
-
-func Insert(db *sql.DB, v interface{}) (string, error) {
-	return "", nil
-}
-
-func Update(db *sql.DB, v interface{}) (string, error) {
-	return "", nil
-}
 
 // func Columns(v interface{}) (cols []string) {
 // 	vt := reflect.TypeOf(v)
