@@ -55,7 +55,7 @@ sqlkung.Marshal(rows, &data)
 ### schema
 
 ```sql
-select num.id, num.age, text.name, text.phone, text.sex from persons limit 10
+select 'num.id', 'num.age', 'text.name', 'text.phone', 'text.sex' from persons limit 10
 ```
 
 ```golang
@@ -75,3 +75,4 @@ sqlkung.Marshal(rows, &data)
 
 ## Insert/Update
 
+![simple is power](https://raw.githubusercontent.com/bom-d-van/sqlkungfu/master/sqlkungfu.png)
