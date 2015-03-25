@@ -1,6 +1,6 @@
 # sqlkungfu
 
-sqlkungfu is a very simple data binding package, built along with database/sql package. It doesn't assume fixed bindings between your structs and tables. Instead, it gives the ability to avail yourself of the powerful combination of golang and SQL.
+sqlkungfu is a very simple data binding package, built along with database/sql package. It doesn't assume fixed bindings between your structs and tables. Instead, it offers us the ability to avail ourself of the powerful combination of golang and SQL.
 
 ## Unmarshal
 
@@ -17,16 +17,16 @@ var data struct{
 	Phone string
 	Sex   string
 }
-sqlkung.Marshal(rows, &data)
+sqlkungfu.Unmarshal(rows, &data)
 
 var data []string
-sqlkung.Marshal(rows, &data)
+sqlkungfu.Unmarshal(rows, &data)
 
 var data [4]string
-sqlkung.Marshal(rows, &data)
+sqlkungfu.Unmarshal(rows, &data)
 
 var data map[string]interface{}
-sqlkung.Marshal(rows, &data)
+sqlkungfu.Unmarshal(rows, &data)
 ```
 
 ```sql
@@ -40,16 +40,16 @@ var data []struct{
 	Phone string
 	Sex   string
 }
-sqlkung.Marshal(rows, &data)
+sqlkungfu.Unmarshal(rows, &data)
 
 var data [][]string
-sqlkung.Marshal(rows, &data)
+sqlkungfu.Unmarshal(rows, &data)
 
 var data [10][4]string
-sqlkung.Marshal(rows, &data)
+sqlkungfu.Unmarshal(rows, &data)
 
 var data []map[string]interface{}
-sqlkung.Marshal(rows, &data)
+sqlkungfu.Unmarshal(rows, &data)
 ```
 
 ### schema
@@ -70,7 +70,7 @@ var data []struct{
 		Sex   string
 	}
 }
-sqlkung.Marshal(rows, &data)
+sqlkungfu.Unmarshal(rows, &data)
 ```
 
 ## Insert/Update
