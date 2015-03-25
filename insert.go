@@ -19,43 +19,10 @@ func Insert(db *sql.DB, v interface{}, cfgs ...interface{}) (string, sql.Result,
 
 // INSERT INTO table_name (column1,column2,column3,...)
 // VALUES (value1,value2,value3,...);
-// TODO:
-// - map
 func (m Master) Insert(db *sql.DB, v interface{}, cfgs ...interface{}) (insert string, r sql.Result, err error) {
 	rv := indirect(reflect.ValueOf(v))
 
-	table := strings.ToLower(rv.Type().Name()) + "s"
-	// var insertNull bool
-	for _, c := range cfgs {
-		switch c.(type) {
-		// case InsertNull:
-		// 	insertNull = true
-		case TableName:
-			table = string(c.(TableName))
-		}
-	}
-
-	// _ = insertNull
-	var (
-		idField reflect.Value
-		fields  []string
-		holders []string
-		values  []interface{}
-	)
-	switch rv.Kind() {
-	case reflect.Struct:
-		idField, fields, holders, values, err = m.walkStruct(rv)
-	case reflect.Map:
-		if rv.Type().Key().Kind() != reflect.String {
-			err = fmt.Errorf("sqlkungfu: Insert(map key is %s, want string)", rv.Type().Key().Kind())
-			return
-		}
-		for _, k := range rv.MapKeys() {
-			fields = append(fields, m.quoteColumn(k.String()))
-			holders = append(holders, "?")
-			values = append(values, rv.MapIndex(k).Interface())
-		}
-	}
+	idField, fields, holders, values, table, err := m.retrieveValues(db, rv, cfgs...)
 	if err != nil {
 		return
 	}
@@ -73,6 +40,36 @@ func (m Master) Insert(db *sql.DB, v interface{}, cfgs ...interface{}) (insert s
 			rv.SetMapIndex(reflect.ValueOf("id"), reflect.ValueOf(id))
 		} else {
 			idField.Set(reflect.ValueOf(id).Convert(idField.Type()))
+		}
+	}
+	return
+}
+
+func (m Master) retrieveValues(db *sql.DB, rv reflect.Value, cfgs ...interface{}) (idField reflect.Value, fields []string, holders []string, values []interface{}, table string, err error) {
+	table = strings.ToLower(rv.Type().Name()) + "s"
+	// var insertNull bool
+	for _, c := range cfgs {
+		switch c.(type) {
+		// case InsertNull:
+		// 	insertNull = true
+		case TableName:
+			table = string(c.(TableName))
+		}
+	}
+
+	// _ = insertNull
+	switch rv.Kind() {
+	case reflect.Struct:
+		idField, fields, holders, values, err = m.walkStruct(rv)
+	case reflect.Map:
+		if rv.Type().Key().Kind() != reflect.String {
+			err = fmt.Errorf("sqlkungfu: Insert(map key is %s, want string)", rv.Type().Key().Kind())
+			return
+		}
+		for _, k := range rv.MapKeys() {
+			fields = append(fields, m.quoteColumn(k.String()))
+			holders = append(holders, "?")
+			values = append(values, rv.MapIndex(k).Interface())
 		}
 	}
 	return
@@ -116,8 +113,10 @@ func (m Master) walkStruct(rv reflect.Value) (idField reflect.Value, fields []st
 		switch ftype {
 		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64, reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
 			if optionsContain(options, "id") || strings.ToLower(st.Name) == "id" {
-				idField = indirect(field)
-				continue
+				if f := indirect(field); f.Convert(reflect.TypeOf(0)).Int() == 0 {
+					idField = f
+					continue
+				}
 			}
 		case reflect.Struct, reflect.Array, reflect.Map, reflect.Slice:
 			continue
@@ -140,9 +139,26 @@ func optionsContain(options []string, tag string) bool {
 	return false
 }
 
+func Update(db *sql.DB, v interface{}, cfgs ...interface{}) (string, sql.Result, error) {
+	return DefaultMaster.Update(db, v, cfgs...)
+}
+
 // UPDATE table_name
 // SET column1=value1,column2=value2,...
-// WHERE some_column=some_value;
-func (m Master) Update(db *sql.DB, v interface{}) (string, error) {
-	return "", nil
+func (m Master) Update(db *sql.DB, v interface{}, cfgs ...interface{}) (update string, r sql.Result, err error) {
+	rv := indirect(reflect.ValueOf(v))
+	_, fields, _, values, table, err := m.retrieveValues(db, rv, cfgs...)
+	if err != nil {
+		return
+	}
+	var changer []string
+	for _, f := range fields {
+		changer = append(changer, fmt.Sprintf("%s=?", f))
+	}
+	update = fmt.Sprintf("UPDATE %s SET %s", table, strings.Join(changer, ","))
+
+	if r, err = db.Exec(update, values...); err != nil {
+		return
+	}
+	return
 }

@@ -2,7 +2,7 @@ package sqlkungfu
 
 import "testing"
 
-func TestInsert(t *testing.T) {
+func TestInsertAndUpdate(t *testing.T) {
 	_, err := db.Exec(`
 		DROP TABLE IF EXISTS persons;
 
@@ -45,20 +45,41 @@ func TestInsert(t *testing.T) {
 	if err != nil {
 		t.Error(err)
 	}
-
 	if want := "INSERT INTO persons (`first`,`last`,`age`,`addr`,`addrii`) VALUES (?,?,?,?,?)"; insert != want {
 		t.Errorf("got %q; want %q", insert, want)
 	}
+	{
+		var got Person
+		rows, err := db.Query(`select * from persons`)
+		if err != nil {
+			t.Error(err)
+		}
+		if err = Unmarshal(rows, &got); err != nil {
+			t.Error(err)
+		}
+		reportErrIfNotEqual(t, got, want)
+	}
 
-	var got Person
-	rows, err := db.Query(`select * from persons`)
-	if err != nil {
-		t.Error(err)
+	last = "Zhou"
+	want.Age = 27
+	want.FirstName = "Fish"
+	want.Addr = "Shanghai"
+	want.AddressII.AddrII = "Germany"
+	update, _, err := Update(db, want)
+	if want := "UPDATE persons SET `id`=?,`first`=?,`last`=?,`age`=?,`addr`=?,`addrii`=?"; update != want {
+		t.Errorf("got %q; want %q", update, want)
 	}
-	if err = Unmarshal(rows, &got); err != nil {
-		t.Error(err)
+	{
+		var got Person
+		rows, err := db.Query(`select * from persons`)
+		if err != nil {
+			t.Error(err)
+		}
+		if err = Unmarshal(rows, &got); err != nil {
+			t.Error(err)
+		}
+		reportErrIfNotEqual(t, got, want)
 	}
-	reportErrIfNotEqual(t, got, want)
 }
 
 func TestInsertMap(t *testing.T) {
