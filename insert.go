@@ -1,6 +1,7 @@
 package sqlkungfu
 
 import (
+	"time"
 	"fmt"
 	"reflect"
 	"strings"
@@ -93,8 +94,12 @@ func (m Master) walkStruct(rv reflect.Value) (idField reflect.Value, fields []st
 
 		options = options[1:]
 		field := rv.FieldByIndex([]int{i})
-		ftype := indirectT(st.Type).Kind()
-		if ftype == reflect.Struct && (st.Anonymous || optionsContain(options, "inline")) {
+		if field.Kind() == reflect.Ptr && field.IsNil() {
+			continue
+		}
+		ftype := indirectT(st.Type)
+		kind := ftype.Kind()
+		if kind == reflect.Struct && (st.Anonymous || optionsContain(options, "inline")) {
 			id, f, h, v, e := m.walkStruct(indirect(field))
 			if e != nil {
 				err = e
@@ -110,7 +115,7 @@ func (m Master) walkStruct(rv reflect.Value) (idField reflect.Value, fields []st
 			continue
 		}
 
-		switch ftype {
+		switch kind {
 		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64, reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
 			if optionsContain(options, "id") || strings.ToLower(st.Name) == "id" {
 				if f := indirect(field); f.Convert(reflect.TypeOf(0)).Int() == 0 {
@@ -118,7 +123,11 @@ func (m Master) walkStruct(rv reflect.Value) (idField reflect.Value, fields []st
 					continue
 				}
 			}
-		case reflect.Struct, reflect.Array, reflect.Map, reflect.Slice:
+		case reflect.Struct:
+			if !ftype.ConvertibleTo(reflect.TypeOf(time.Time{})) {
+				continue
+			}
+		case reflect.Array, reflect.Map, reflect.Slice:
 			continue
 		}
 
