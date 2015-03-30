@@ -2,10 +2,15 @@ package sqlkungfu
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"reflect"
 	"strings"
 )
+
+// TODO: handle sql.NullString, i.e. sql.Scan and driver.Value
+
+var ErrNoRows = errors.New("sqlkungfu: no rows in result set")
 
 // map
 // normal
@@ -32,6 +37,11 @@ func (m Master) Unmarshal(rows *sql.Rows, v interface{}) (err error) {
 		return fmt.Errorf("sqlkungfu: Unmarshal(non-pointer %T)", v)
 	}
 
+	if !rows.Next() {
+		err = ErrNoRows
+		return
+	}
+
 	vv = indirect(vv)
 	columns, err := rows.Columns()
 	if err != nil {
@@ -42,7 +52,6 @@ func (m Master) Unmarshal(rows *sql.Rows, v interface{}) (err error) {
 	}
 	switch vv.Kind() {
 	case reflect.Struct:
-		rows.Next()
 		err = m.unmarshalStruct(rows, columns, vv)
 	case reflect.Slice, reflect.Array:
 		// TODO:
@@ -273,8 +282,8 @@ func indirectT(v reflect.Type) reflect.Type {
 
 func (m Master) unmarshalSliceOrArray(vv reflect.Value, rows *sql.Rows, columns []string) (err error) {
 	vet := vv.Type().Elem()
-	var i int
-	for rows.Next() {
+	var arri int
+	for {
 		e := newValue(vet)
 		ee := indirect(e)
 		switch ee.Kind() {
@@ -283,31 +292,52 @@ func (m Master) unmarshalSliceOrArray(vv reflect.Value, rows *sql.Rows, columns 
 				return
 			}
 		case reflect.Map:
+			// TODO: is it correct to disable group (MapKey) support here
 			keyt := vet.Key()
 			valt := vet.Elem()
-			fields, key, val := m.genMapFields(columns, keyt, valt)
+			fields, _, val := m.genMapFields(columns, keyt, valt)
 			if err = rows.Scan(fields...); err != nil {
 				return
 			}
 
 			ee.Set(reflect.MakeMap(ee.Type()))
 			switch indirectT(valt).Kind() {
-			case reflect.Slice:
-				v := reflect.Append(indirect(newValue(valt)), val.([]reflect.Value)...)
-				ee.SetMapIndex(key, v)
-			case reflect.Array:
-				// TODO: add tests
-				v := newValue(valt).Elem()
-				ve := indirect(v)
-				for i, e := range val.([]reflect.Value) {
-					ve.Index(i).Set(e)
-				}
-				vv.SetMapIndex(key, v)
+			// case reflect.Slice:
+			// 	v := reflect.Append(indirect(newValue(valt)), val.([]reflect.Value)...)
+			// 	ee.SetMapIndex(key, v)
+			// case reflect.Array:
+			// 	// TODO: add tests
+			// 	v := newValue(valt).Elem()
+			// 	ve := indirect(v)
+			// 	for i, e := range val.([]reflect.Value) {
+			// 		ve.Index(i).Set(e)
+			// 	}
+			// 	vv.SetMapIndex(key, v)
 			case reflect.Map:
 				// TODO: schema?
 			case reflect.Interface:
+				vals := val.([]reflect.Value)
+				for i, col := range columns {
+					v := vals[i].Elem()
+					key := reflect.ValueOf(col)
+					if b, ok := v.Interface().([]uint8); ok && m.MapUint8ToString {
+						ee.SetMapIndex(key, reflect.ValueOf(string(b)))
+					} else {
+						ee.SetMapIndex(key, v)
+					}
+				}
 			default:
-				ee.SetMapIndex(key, val.(reflect.Value).Elem())
+				// v := val.(reflect.Value).Elem()
+				// if b, ok := v.Interface().([]uint8); ok && m.MapUint8ToString {
+				// 	ee.SetMapIndex(key, reflect.ValueOf(string(b)))
+				// } else {
+				// 	ee.SetMapIndex(key, v)
+				// }
+				vals := val.([]reflect.Value)
+				for i, col := range columns {
+					key := reflect.ValueOf(col)
+					ee.SetMapIndex(key, vals[i].Elem())
+				}
 			}
 		case reflect.Slice, reflect.Array:
 			var eis []reflect.Value
@@ -339,11 +369,16 @@ func (m Master) unmarshalSliceOrArray(vv reflect.Value, rows *sql.Rows, columns 
 			}
 		}
 		if vv.Kind() == reflect.Array {
-			vv.Index(i).Set(e.Elem())
+			vv.Index(arri).Set(e.Elem())
+			arri++
 		} else {
 			vv.Set(reflect.Append(vv, e.Elem()))
 		}
-		i++
+
+		// TODO: explain
+		if !rows.Next() {
+			break
+		}
 	}
 
 	return
@@ -367,7 +402,7 @@ func (m Master) unmarshalMap(vv reflect.Value, rows *sql.Rows, columns []string)
 	keyt := vvt.Key()
 	valt := vvt.Elem()
 	arri := map[interface{}]int{}
-	for rows.Next() {
+	for {
 		fields, key, val := m.genMapFields(columns, keyt, valt)
 
 		if err = rows.Scan(fields...); err != nil {
@@ -432,8 +467,16 @@ func (m Master) unmarshalMap(vv reflect.Value, rows *sql.Rows, columns []string)
 				}
 				v.SetMapIndex(reflect.ValueOf(names[len(names)-1]), reflect.ValueOf(val))
 			}
-		default:
+		case reflect.Struct:
 			vv.SetMapIndex(key, val.(reflect.Value).Elem())
+		default:
+			// TODO: is this reasonable?
+			vv.SetMapIndex(key, val.([]reflect.Value)[0].Elem())
+		}
+
+		// TODO: explain
+		if !rows.Next() {
+			break
 		}
 	}
 	return
@@ -512,13 +555,16 @@ func (m Master) genMapFields(columns []string, keyt, valt reflect.Type) (fields 
 		case reflect.Interface:
 			fallthrough
 		default:
+			if val == nil {
+				val = []reflect.Value{}
+			}
 			v := newValue(valt)
 			ve := v
 			if v.Kind() == reflect.Ptr {
 				ve = indirect(v)
 			}
 			fields = append(fields, ve.Addr().Interface())
-			val = v
+			val = append(val.([]reflect.Value), v)
 		}
 	}
 

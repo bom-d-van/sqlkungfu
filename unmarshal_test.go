@@ -7,6 +7,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	_ "github.com/mattn/go-sqlite3"
 )
@@ -22,7 +23,12 @@ type Person struct {
 	Projects  []*Project
 	Age       Int
 	Address
+	CreatedAt time.Time
+	FakeTime  time.Time
+	// FakeTime  FakeTime
 }
+
+type FakeTime time.Time
 
 type Int int
 
@@ -122,10 +128,12 @@ func TestUnmarshalStruct(t *testing.T) {
 			lastname varchar(255),
 			firstname varchar(255),
 			age integer,
-			addr string
+			addr string,
+			createdat timestamp,
+			faketime timestamp
 		);
 
-		INSERT INTO persons (firstname, lastname, age, addr) VALUES ("kungfu", "master", 24, "Shaolin Temple");
+		INSERT INTO persons (firstname, lastname, age, addr, createdat, faketime) VALUES ("kungfu", "master", 24, "Shaolin Temple", "2015-03-29 05:29:39.750515459", "2015-03-29 05:29:39.750515459");
 	`)
 	if err != nil {
 		t.Fatal(err)
@@ -381,7 +389,9 @@ func TestUnmarshalSchema(t *testing.T) {
 			},
 		}
 
-		reportErrIfNotEqual(t, got, want)
+		if r := reportErrIfNotEqual(t, got, want); r != "" {
+			t.Error(r)
+		}
 	}
 	{
 		rows, err := db.Query("select lastname 'name.l0.last', firstname 'name.l0.first', age 'info.l0.l1.num.age' from persons")
@@ -408,7 +418,9 @@ func TestUnmarshalSchema(t *testing.T) {
 				},
 			},
 		}
-		reportErrIfNotEqual(t, got, want)
+		if r := reportErrIfNotEqual(t, got, want); r != "" {
+			t.Error(r)
+		}
 	}
 	{
 		rows, err := db.Query("select lastname 'name.last', firstname 'name.first', age 'info.num.age', addr 'info.text.addr' from persons")
@@ -434,7 +446,9 @@ func TestUnmarshalSchema(t *testing.T) {
 			},
 		}
 
-		reportErrIfNotEqual(t, got, want)
+		if r := reportErrIfNotEqual(t, got, want); r != "" {
+			t.Error(r)
+		}
 	}
 	{
 		rows, err := db.Query("select lastname 'name.last', firstname 'name.first', age 'info.num.age', addr 'info.text.addr' from persons")
@@ -465,7 +479,9 @@ func TestUnmarshalSchema(t *testing.T) {
 			},
 		}
 
-		reportErrIfNotEqual(t, got, want)
+		if r := reportErrIfNotEqual(t, got, want); r != "" {
+			t.Error(r)
+		}
 	}
 	{
 		rows, err := db.Query("select lastname 'name.last', firstname 'name.first', age 'info.l0.l1.l2.num.age', addr 'info.l0.l1.l2.text.addr' from persons")
@@ -501,7 +517,9 @@ func TestUnmarshalSchema(t *testing.T) {
 			}}}},
 		}
 
-		reportErrIfNotEqual(t, got, want)
+		if r := reportErrIfNotEqual(t, got, want); r != "" {
+			t.Error(r)
+		}
 	}
 	{
 		rows, err := db.Query("select lastname 'name.last', firstname 'name.first', age 'info.num.age', addr 'info.text.addr' from persons")
@@ -532,7 +550,9 @@ func TestUnmarshalSchema(t *testing.T) {
 			},
 		}
 
-		reportErrIfNotEqual(t, got, want)
+		if r := reportErrIfNotEqual(t, got, want); r != "" {
+			t.Error(r)
+		}
 	}
 	{
 		rows, err := db.Query("select lastname 'name.last', firstname 'name.first', age 'info.num.age', addr 'info.text.addr' from persons")
@@ -555,13 +575,15 @@ func TestUnmarshalSchema(t *testing.T) {
 			},
 		}
 
-		reportErrIfNotEqual(t, got, want)
+		if r := reportErrIfNotEqual(t, got, want); r != "" {
+			t.Error(r)
+		}
 	}
 }
 
-func reportErrIfNotEqual(t *testing.T, got, want interface{}) {
+func reportErrIfNotEqual(t *testing.T, got, want interface{}) string {
 	if reflect.DeepEqual(got, want) {
-		return
+		return ""
 	}
 	var err error
 	if got, err = json.MarshalIndent(got, "", "  "); err != nil {
@@ -570,7 +592,7 @@ func reportErrIfNotEqual(t *testing.T, got, want interface{}) {
 	if want, err = json.MarshalIndent(want, "", "  "); err != nil {
 		t.Fatal(err)
 	}
-	t.Errorf("got %s\nwant %s", got, want)
+	return fmt.Sprintf("got %s\nwant %s", got, want)
 }
 
 func TestUnmarshalEmptyPointer(t *testing.T) {
@@ -790,7 +812,9 @@ func TestUnmarshalSliceArray(t *testing.T) {
 		}
 
 		want := [][2]string{{"kungfu0", "master0"}, {"kungfu1", "master1"}}
-		reportErrIfNotEqual(t, got, want)
+		if r := reportErrIfNotEqual(t, got, want); r != "" {
+			t.Error(r)
+		}
 	}
 	{
 		rows, err := db.Query("select firstname, lastname from persons")
@@ -807,7 +831,9 @@ func TestUnmarshalSliceArray(t *testing.T) {
 		s0 := &[2]string{"kungfu0", "master0"}
 		s1 := &[2]string{"kungfu1", "master1"}
 		want := []**[2]string{&s0, &s1}
-		reportErrIfNotEqual(t, got, want)
+		if r := reportErrIfNotEqual(t, got, want); r != "" {
+			t.Error(r)
+		}
 	}
 	{
 		rows, err := db.Query("select id, firstname, lastname from persons")
@@ -822,7 +848,9 @@ func TestUnmarshalSliceArray(t *testing.T) {
 		}
 
 		want := [][3]interface{}{{int64(1), "kungfu0", "master0"}, {int64(2), "kungfu1", "master1"}}
-		reportErrIfNotEqual(t, got, want)
+		if r := reportErrIfNotEqual(t, got, want); r != "" {
+			t.Error(r)
+		}
 	}
 }
 
@@ -928,84 +956,94 @@ func TestUnmarshalSliceMap(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	rows, err := db.Query("select lastname as sqlmapkey, firstname from persons")
-	if err != nil {
-		t.Fatal(err)
-	}
+	{
+		rows, err := db.Query("select lastname, firstname from persons")
+		if err != nil {
+			t.Fatal(err)
+		}
 
-	var ps []map[string]string
-	err = Unmarshal(rows, &ps)
-	if err != nil {
-		t.Error(err)
-	}
+		var got []map[string]string
+		err = Unmarshal(rows, &got)
+		if err != nil {
+			t.Error(err)
+		}
 
-	if len(ps) != 2 {
-		t.Errorf("len(ps) = %d; want 2", len(ps))
-	}
-	for i, p := range ps {
-		key := fmt.Sprintf("master%d", i)
-		if got, ok := p[key]; ok {
-			if want := fmt.Sprintf("kungfu%d", i); got != want {
-				t.Errorf(`ps["master0"] %q; want %q`, got, want)
-			}
-		} else {
-			t.Errorf("p[%s] do not exist", key)
+		want := []map[string]string{
+			{"firstname": "kungfu0", "lastname": "master0"},
+			{"firstname": "kungfu1", "lastname": "master1"},
+		}
+
+		if r := reportErrIfNotEqual(t, got, want); r != "" {
+			t.Error(r)
 		}
 	}
+	{
+		rows, err := db.Query("select lastname, firstname from persons")
+		if err != nil {
+			t.Fatal(err)
+		}
 
-	// if got, ok := ps["master1"]; ok {
-	// 	if got != "kungfu1" {
-	// 		t.Errorf(`ps["master1"] %q; want "kungfu1"`, got)
-	// 	}
-	// } else {
-	// 	t.Error(`"ps"[master1] does not exist`)
-	// }
-}
+		var got []map[string]interface{}
+		err = Unmarshal(rows, &got)
+		if err != nil {
+			t.Error(err)
+		}
 
-func TestUnmarshalSliceMapSlice(t *testing.T) {
-	_, err := db.Exec(`
-		DROP TABLE IF EXISTS persons;
+		want := []map[string]interface{}{
+			{"firstname": "kungfu0", "lastname": "master0"},
+			{"firstname": "kungfu1", "lastname": "master1"},
+		}
 
-		CREATE TABLE persons(
-			id 			integer PRIMARY KEY,
-			lastname 	varchar(255),
-			firstname 	varchar(255),
-			sex 		varchar
-		);
-
-		INSERT INTO persons (firstname, lastname, sex) VALUES ("kungfu0", "master0", "female");
-		INSERT INTO persons (firstname, lastname, sex) VALUES ("kungfu1", "master1", "female");
-	`)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	rows, err := db.Query("select lastname as sqlmapkey, firstname, sex from persons")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	var ps []map[string][]string
-	err = Unmarshal(rows, &ps)
-	if err != nil {
-		t.Error(err)
-	}
-
-	if len(ps) != 2 {
-		t.Errorf("len(ps) = %d; want 2", len(ps))
-	}
-	for i, p := range ps {
-		key := fmt.Sprintf("master%d", i)
-		if got, ok := p[key]; ok {
-			want := fmt.Sprintf("kungfu%d female", i)
-			if g := strings.Join(got, " "); g != want {
-				t.Errorf(`ps[%q] %q; want %q`, key, g, want)
-			}
-		} else {
-			t.Errorf("ps[%s] do not exist", key)
+		if r := reportErrIfNotEqual(t, got, want); r != "" {
+			t.Error(r)
 		}
 	}
 }
+
+// func TestUnmarshalSliceMapSlice(t *testing.T) {
+// 	_, err := db.Exec(`
+// 		DROP TABLE IF EXISTS persons;
+
+// 		CREATE TABLE persons(
+// 			id 			integer PRIMARY KEY,
+// 			lastname 	varchar(255),
+// 			firstname 	varchar(255),
+// 			sex 		varchar
+// 		);
+
+// 		INSERT INTO persons (firstname, lastname, sex) VALUES ("kungfu0", "master0", "female");
+// 		INSERT INTO persons (firstname, lastname, sex) VALUES ("kungfu1", "master1", "female");
+// 	`)
+// 	if err != nil {
+// 		t.Fatal(err)
+// 	}
+
+// 	rows, err := db.Query("select lastname as sqlmapkey, firstname, sex from persons")
+// 	if err != nil {
+// 		t.Fatal(err)
+// 	}
+
+// 	var ps []map[string][]string
+// 	err = Unmarshal(rows, &ps)
+// 	if err != nil {
+// 		t.Error(err)
+// 	}
+
+// 	if len(ps) != 2 {
+// 		t.Errorf("len(ps) = %d; want 2", len(ps))
+// 	}
+// 	for i, p := range ps {
+// 		key := fmt.Sprintf("master%d", i)
+// 		if got, ok := p[key]; ok {
+// 			want := fmt.Sprintf("kungfu%d female", i)
+// 			if g := strings.Join(got, " "); g != want {
+// 				t.Errorf(`ps[%q] %q; want %q`, key, g, want)
+// 			}
+// 		} else {
+// 			t.Errorf("ps[%s] do not exist", key)
+// 		}
+// 	}
+// }
 
 func TestUnmarshalSliceStruct(t *testing.T) {
 	_, err := db.Exec(`

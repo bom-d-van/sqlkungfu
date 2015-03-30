@@ -20,7 +20,6 @@ type Master struct {
 }
 
 var DefaultMaster = Master{
-	// FieldNameMap:     func(name string) string { return strings.ToLower(name) },
 	SchemaSeparator:  ".",
 	MapKey:           "sqlmapkey",
 	TagKey:           "sqlkungfu",
