@@ -8,7 +8,7 @@ import (
 	"strings"
 )
 
-// TODO: handle sql.NullString, i.e. sql.Scan and driver.Value
+// TODO: handle sql.NullString, i.e. sql.Scanner and driver.Value
 
 var ErrNoRows = errors.New("sqlkungfu: no rows in result set")
 
@@ -302,37 +302,21 @@ func (m Master) unmarshalSliceOrArray(vv reflect.Value, rows *sql.Rows, columns 
 
 			ee.Set(reflect.MakeMap(ee.Type()))
 			switch indirectT(valt).Kind() {
-			// case reflect.Slice:
-			// 	v := reflect.Append(indirect(newValue(valt)), val.([]reflect.Value)...)
-			// 	ee.SetMapIndex(key, v)
-			// case reflect.Array:
-			// 	// TODO: add tests
-			// 	v := newValue(valt).Elem()
-			// 	ve := indirect(v)
-			// 	for i, e := range val.([]reflect.Value) {
-			// 		ve.Index(i).Set(e)
-			// 	}
-			// 	vv.SetMapIndex(key, v)
 			case reflect.Map:
 				// TODO: schema?
 			case reflect.Interface:
-				vals := val.([]reflect.Value)
-				for i, col := range columns {
-					v := vals[i].Elem()
-					key := reflect.ValueOf(col)
-					if b, ok := v.Interface().([]uint8); ok && m.MapUint8ToString {
-						ee.SetMapIndex(key, reflect.ValueOf(string(b)))
-					} else {
-						ee.SetMapIndex(key, v)
-					}
-				}
-			default:
-				// v := val.(reflect.Value).Elem()
-				// if b, ok := v.Interface().([]uint8); ok && m.MapUint8ToString {
-				// 	ee.SetMapIndex(key, reflect.ValueOf(string(b)))
-				// } else {
-				// 	ee.SetMapIndex(key, v)
+				// vals := val.([]reflect.Value)
+				// for i, col := range columns {
+				// 	v := vals[i].Elem()
+				// 	key := reflect.ValueOf(col)
+				// 	if b, ok := v.Interface().([]uint8); ok && m.MapUint8ToString {
+				// 		ee.SetMapIndex(key, reflect.ValueOf(string(b)))
+				// 	} else {
+				// 		ee.SetMapIndex(key, v)
+				// 	}
 				// }
+				m.assignMapInterfaceFields(ee, columns, fields)
+			default:
 				vals := val.([]reflect.Value)
 				for i, col := range columns {
 					key := reflect.ValueOf(col)
@@ -415,7 +399,6 @@ func (m Master) unmarshalMap(vv reflect.Value, rows *sql.Rows, columns []string)
 			v = m.assignMapSliceOrArray(v, valt, valet, columns, 0, val)
 			vv.SetMapIndex(key, v)
 		case reflect.Array:
-			// TODO: same support as slice above
 			v := vv.MapIndex(key)
 			i := arri[key.Interface()]
 			v = m.assignMapSliceOrArray(v, valt, valet, columns, i, val)
@@ -440,33 +423,7 @@ func (m Master) unmarshalMap(vv reflect.Value, rows *sql.Rows, columns []string)
 				vv.SetMapIndex(key, val.(reflect.Value).Elem())
 				continue
 			}
-			for i, col := range columns {
-				if col == m.MapKey {
-					continue
-				}
-				names := strings.Split(col, m.SchemaSeparator)
-				v := vv
-				for _, name := range names[:len(names)-1] {
-					if v.Kind() == reflect.Interface {
-						v = v.Elem()
-					}
-					nv := v.MapIndex(reflect.ValueOf(name))
-					if !nv.IsValid() {
-						nv = reflect.MakeMap(reflect.TypeOf(map[string]interface{}{}))
-						v.SetMapIndex(reflect.ValueOf(name), nv)
-					}
-					v = nv
-				}
-				val := *fields[i].(*interface{})
-				if b, ok := val.([]uint8); ok && m.MapUint8ToString {
-					val = string(b)
-				}
-				// v.Interface().(map[string]interface{})[names[len(names)-1]] = val
-				if v.Kind() == reflect.Interface {
-					v = v.Elem()
-				}
-				v.SetMapIndex(reflect.ValueOf(names[len(names)-1]), reflect.ValueOf(val))
-			}
+			m.assignMapInterfaceFields(vv, columns, fields)
 		case reflect.Struct:
 			vv.SetMapIndex(key, val.(reflect.Value).Elem())
 		default:
@@ -569,6 +526,36 @@ func (m Master) genMapFields(columns []string, keyt, valt reflect.Type) (fields 
 	}
 
 	return
+}
+
+func (m Master) assignMapInterfaceFields(vv reflect.Value, columns []string, fields []interface{}) {
+	for i, col := range columns {
+		if col == m.MapKey {
+			continue
+		}
+		names := strings.Split(col, m.SchemaSeparator)
+		v := vv
+		for _, name := range names[:len(names)-1] {
+			if v.Kind() == reflect.Interface {
+				v = v.Elem()
+			}
+			nv := v.MapIndex(reflect.ValueOf(name))
+			if !nv.IsValid() {
+				nv = reflect.MakeMap(reflect.TypeOf(map[string]interface{}{}))
+				v.SetMapIndex(reflect.ValueOf(name), nv)
+			}
+			v = nv
+		}
+		val := *fields[i].(*interface{})
+		if b, ok := val.([]uint8); ok && m.MapUint8ToString {
+			val = string(b)
+		}
+		// v.Interface().(map[string]interface{})[names[len(names)-1]] = val
+		if v.Kind() == reflect.Interface {
+			v = v.Elem()
+		}
+		v.SetMapIndex(reflect.ValueOf(names[len(names)-1]), reflect.ValueOf(val))
+	}
 }
 
 // TODO: complete test suites for array

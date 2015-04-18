@@ -4,16 +4,18 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	_ "github.com/mattn/go-sqlite3"
 	"reflect"
 	"strings"
 	"testing"
 	"time"
-
-	_ "github.com/mattn/go-sqlite3"
 )
 
 // TODO:
 // - fix error: database is locked
+// - refactor tests
+//     - consistent style (got and want, etc)
+//     - use reportErrIfNotEqual
 
 type Person struct {
 	Id        uint64
@@ -25,7 +27,8 @@ type Person struct {
 	Address
 	CreatedAt time.Time
 	FakeTime  time.Time
-	// FakeTime  FakeTime
+
+	NullString sql.NullString
 }
 
 type FakeTime time.Time
@@ -130,10 +133,11 @@ func TestUnmarshalStruct(t *testing.T) {
 			age integer,
 			addr string,
 			createdat timestamp,
-			faketime timestamp
+			faketime timestamp,
+			nullstring string
 		);
 
-		INSERT INTO persons (firstname, lastname, age, addr, createdat, faketime) VALUES ("kungfu", "master", 24, "Shaolin Temple", "2015-03-29 05:29:39.750515459", "2015-03-29 05:29:39.750515459");
+		INSERT INTO persons (firstname, lastname, age, addr, createdat, faketime, nullstring) VALUES ("kungfu", "master", 24, "Shaolin Temple", "2015-03-29 05:29:39.750515459", "2015-03-29 05:29:39.750515459", "null");
 	`)
 	if err != nil {
 		t.Fatal(err)
@@ -144,20 +148,39 @@ func TestUnmarshalStruct(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	var p **Person
-	err = Unmarshal(rows, &p)
+	var got **Person
+	err = Unmarshal(rows, &got)
 	if err != nil {
 		t.Error(err)
 	}
 
-	if (**p).String() != "kungfu master" {
-		t.Errorf("got %s; want %s", (**p).String(), "kungfu master")
+	createdAt, err := time.Parse("2006-01-02T15:04:05.999999999-07:00", "2015-03-29T13:29:39.750515459+08:00")
+	if err != nil {
+		t.Error(err)
 	}
-	if (**p).Age != Int(24) {
-		t.Errorf("got %d; want 24", (**p).Age)
+	fakeTime, err := time.Parse("2006-01-02T15:04:05.999999999-07:00", "2015-03-29T13:29:39.750515459+08:00")
+	if err != nil {
+		t.Error(err)
 	}
-	if (**p).Addr != "Shaolin Temple" {
-		t.Errorf("got %q; want %q", (**p).Addr, "Shaolin Temple")
+
+	last := "master"
+	lastp := &last
+	lastpp := &lastp
+	want := Person{
+		Id:        1,
+		FirstName: "kungfu",
+		LastName:  &lastpp,
+		Age:       24,
+		Address:   Address{Addr: "Shaolin Temple"},
+		CreatedAt: createdAt,
+		FakeTime:  fakeTime,
+		NullString: sql.NullString{
+			String: "null",
+			Valid:  true,
+		},
+	}
+	if r := reportErrIfNotEqual(t, **got, want); r != "" {
+		t.Error(r)
 	}
 }
 
@@ -359,6 +382,7 @@ func TestUnmarshalSchema(t *testing.T) {
 		);
 
 		INSERT INTO persons (firstname, lastname, age, addr) VALUES ("kungfu", "master", 24, "Shaolin Temple");
+		INSERT INTO persons (firstname, lastname, age, addr) VALUES ("kungfu", "master", 24, "Shaolin Temple");
 	`)
 	if err != nil {
 		t.Fatal(err)
@@ -515,6 +539,53 @@ func TestUnmarshalSchema(t *testing.T) {
 				Num:  Num{24},
 				Text: Text{"Shaolin Temple"},
 			}}}},
+		}
+
+		if r := reportErrIfNotEqual(t, got, want); r != "" {
+			t.Error(r)
+		}
+	}
+	{
+		rows, err := db.Query("select lastname 'name.last', firstname 'name.first', age 'info.l0.l1.l2.num.age', addr 'info.l0.l1.l2.text.addr' from persons")
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		type Num struct{ Age int }
+		type Text struct{ Addr string }
+		type L2 struct {
+			Num  Num
+			Text Text
+		}
+		type L1 struct{ L2 L2 }
+		type val struct{ L1 L1 }
+		type info map[string]*val
+		type data struct {
+			Name map[string]string
+			Info info
+		}
+		var got []data
+
+		err = Unmarshal(rows, &got)
+		if err != nil {
+			t.Error(err)
+		}
+
+		want := []data{
+			{
+				Name: map[string]string{"first": "kungfu", "last": "master"},
+				Info: info{"l0": &val{L1{L2{
+					Num:  Num{24},
+					Text: Text{"Shaolin Temple"},
+				}}}},
+			},
+			{
+				Name: map[string]string{"first": "kungfu", "last": "master"},
+				Info: info{"l0": &val{L1{L2{
+					Num:  Num{24},
+					Text: Text{"Shaolin Temple"},
+				}}}},
+			},
 		}
 
 		if r := reportErrIfNotEqual(t, got, want); r != "" {
@@ -978,7 +1049,7 @@ func TestUnmarshalSliceMap(t *testing.T) {
 		}
 	}
 	{
-		rows, err := db.Query("select lastname, firstname from persons")
+		rows, err := db.Query("select lastname 'text.1.lastname', firstname 'text.1.2.firstname' from persons")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -990,8 +1061,22 @@ func TestUnmarshalSliceMap(t *testing.T) {
 		}
 
 		want := []map[string]interface{}{
-			{"firstname": "kungfu0", "lastname": "master0"},
-			{"firstname": "kungfu1", "lastname": "master1"},
+			map[string]interface{}{
+				"text": map[string]interface{}{
+					"1": map[string]interface{}{
+						"2":        map[string]interface{}{"firstname": "kungfu0"},
+						"lastname": "master0",
+					},
+				},
+			},
+			map[string]interface{}{
+				"text": map[string]interface{}{
+					"1": map[string]interface{}{
+						"2":        map[string]interface{}{"firstname": "kungfu1"},
+						"lastname": "master1",
+					},
+				},
+			},
 		}
 
 		if r := reportErrIfNotEqual(t, got, want); r != "" {
