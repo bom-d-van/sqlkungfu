@@ -41,10 +41,10 @@ func InitMigration(db *sql.DB) (err error) {
 	return
 }
 
-func Exec(db *sql.DB, query string, args ...interface{}) (s Migration, r sql.Result, err error) {
+func Exec(db *sql.DB, query string, args ...interface{}) (m Migration, r sql.Result, err error) {
 	sum := fmt.Sprintf("%x", md5.Sum([]byte(query)))
 	row := db.QueryRow("select * from sqlkungfu_migrations where checksum = ?", sum)
-	if err = row.Scan(&s.Checksum, &s.CreatedAt); err == nil {
+	if err = row.Scan(&m.Checksum, &m.CreatedAt); err == nil {
 		return
 	} else if err != sql.ErrNoRows {
 		return
@@ -54,10 +54,18 @@ func Exec(db *sql.DB, query string, args ...interface{}) (s Migration, r sql.Res
 		return
 	}
 
-	s.Checksum = sum
+	m.Checksum = sum
 	// d := Date(time.Now().Truncate(time.Hour * 24))
-	s.CreatedAt = time.Now()
-	_, _, err = Insert(db, s, TableName("sqlkungfu_migrations"))
+	m.CreatedAt = time.Now()
+	_, _, err = Insert(db, m, TableName("sqlkungfu_migrations"))
 
+	return
+}
+
+func MustExec(db *sql.DB, query string, args ...interface{}) (m Migration, r sql.Result) {
+	m, r, err := Exec(db, query, args...)
+	if err != nil {
+		panic(err)
+	}
 	return
 }
